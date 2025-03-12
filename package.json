@@ -1,0 +1,23 @@
+{
+  "name": "deploy-tool",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/archiver": "^6.0.3",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/ssh2": "^1.15.4",
+    "archiver": "^7.0.1",
+    "chalk": "^5.4.1",
+    "minimatch": "^10.0.1",
+    "pino": "^9.6.0",
+    "ssh2": "^1.16.0"
+  },
+  "scripts": {
+    "deploy": "bun run src/index.ts"
+  }
+}

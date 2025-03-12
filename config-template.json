@@ -1,0 +1,35 @@
+{
+    "ssh": {
+        "host": "",
+        "port": 22,
+        "username": "",
+        "password": "",
+        "privateKey": "path_to_id_rsa",
+        "passphrase": "passphrase_to_id_rsa"
+    },
+    "remote_theme_path": "",
+    "local_theme_path": "../",
+    "exclude": [
+        ".git",
+        "Deployment",
+        "**/node_modules/**",
+        "vendor",
+        "docs",
+        ".gitignore",
+        "package-lock.json",
+        "package.json",
+        "composer.lock",
+        "source/dev",
+        "**/vite.config.js",
+        "**/tsconfig.json",
+        "**/package.json",
+        "**/package-lock.json",
+        "**/*.DS_Store",
+        "**/*.scss",
+        "**/*.ts",
+        "gutenberg/components",
+        "gutenberg/constants",
+        "gutenberg/src",
+        "**/*.jsx"
+    ]
+}
