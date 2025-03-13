@@ -42,7 +42,7 @@ async function main() {
         await Deployer.syncToRemote(sshClient, localFiles, remoteFiles, config.remote_theme_path, config.exclude);
         console.info(chalk.yellow(`Синхронизация завершена`));
 
-        await sshClient.executeCommand(`cd ${config.remote_theme_path} && composer install`);
+        await sshClient.executeCommand(`cd ${config.remote_theme_path}/core && composer install`);
         console.info(chalk.yellow(`Composer завершён`));
 
         // 8. Завершение SSH-соединения

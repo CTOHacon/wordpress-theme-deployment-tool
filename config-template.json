@@ -12,7 +12,9 @@
     "exclude": [
         ".git",
         "Deployment",
+        ".deployment",
         "**/node_modules/**",
+        "**/vendor/**",
         "vendor",
         "docs",
         ".gitignore",
