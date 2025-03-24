@@ -4,7 +4,8 @@
   "type": "module",
   "devDependencies": {
     "@types/archiver": "^6.0.3",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "^22.13.11"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

@@ -1,58 +1,63 @@
 import { ConfigService } from "./config/ConfigService";
-import { FileCollector } from "./filesystem/FileCollector";
-import { SSHClient } from "./sftp/SSHClient";
-import { Deployer } from "./sftp/Deployer";
-import { rm, mkdir } from 'fs/promises';
-import chalk from "chalk";
+import { FileCollector } from "./core/FileCollector";
+import { SSHClient } from "./core/SSHClient";
+import { Deployer } from "./core/Deployer";
+import Logger from "./utils/Logger";
+import { rm, mkdir } from "fs/promises";
 
 async function main() {
     try {
-        // 1. Загрузка и валидация конфигурации
+        // 1. Загрузка конфигурации
         const config = await ConfigService.loadConfig();
-        console.info(chalk.green("Конфигурация загружена"));
+        Logger.info("Конфигурация загружена");
 
-        // 2. Сбор файлов локальной темы с учётом exclude-паттернов
+        // 2. Сбор локальных файлов с учётом exclude-паттернов
         const localFiles = await FileCollector.collectFiles(config.local_theme_path, config.exclude);
+        Logger.info(`Найдено ${localFiles.length} локальных файлов`);
 
-        // 3. Копирование файлов в директорию сборки (.output)
+        // 3. Копирование файлов в сборочную директорию (.output)
         const outputDir = ".output";
         try {
             await rm(outputDir, { recursive: true, force: true });
+            Logger.info(`Старая директория ${outputDir} удалена`);
         } catch (error) {
-            // Ошибки удаления можно обработать при необходимости
+            Logger.warn(`Ошибка при удалении ${outputDir}: ${error}`);
         }
-
         await mkdir(outputDir, { recursive: true });
         await FileCollector.copyFilesToOutput(localFiles, outputDir);
-        console.info(chalk.blue(`Файлы скопированы в ${outputDir}`));
+        Logger.info(`Файлы скопированы в ${outputDir}`);
 
-        // 4. Предварительная сборка PHP-файлов
-        // Comming soon...
-
-        // 5. Установка SSH-соединения с сервером
+        // 4. Установка SSH-соединения
         const sshClient = new SSHClient();
         await sshClient.connect(config.ssh);
-        console.info(chalk.green("SSH соединение установлено"));
+        Logger.info("SSH соединение установлено");
 
-        // 6. Получение списка файлов на сервере
+        // 5. Получение списка файлов на сервере
         const remoteFiles = await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude);
-        console.info(chalk.magenta(`На сервере найдено ${remoteFiles.length} файлов`));
+        Logger.info(`На сервере найдено ${remoteFiles.length} файлов`);
 
-        // 7. Синхронизация локальных файлов с удалёнными
-        await Deployer.syncToRemote(sshClient, localFiles, remoteFiles, config.remote_theme_path, config.exclude);
-        console.info(chalk.yellow(`Синхронизация завершена`));
+        // 6. Синхронизация локальной сборки с сервером
+        const syncResult = await Deployer.syncToRemote(
+            sshClient,
+            localFiles,
+            remoteFiles,
+            config.remote_theme_path,
+            config.exclude,
+            config
+        );
+        Logger.success(
+            `Синхронизация завершена: удалено ${syncResult.deleted}`
+        );
 
-        await sshClient.executeCommand(`cd ${config.remote_theme_path}/ThemeCore && composer install`);
-        console.info(chalk.yellow(`Composer завершён`));
-
-        // 8. Завершение SSH-соединения
+        // 7. Завершение SSH-соединения
         sshClient.disconnect();
-        console.info(chalk.green("SSH соединение закрыто"));
+        Logger.info("SSH соединение закрыто");
 
-        // remove output dir
+        // 8. Очистка сборочной директории
         await rm(outputDir, { recursive: true, force: true });
+        Logger.info(`Сборочная директория ${outputDir} удалена`);
     } catch (error) {
-        console.error(chalk.red(`Ошибка в процессе деплоя: ${error}`));
+        Logger.error(`Ошибка в процессе деплоя: ${error}`);
         process.exit(1);
     }
 }

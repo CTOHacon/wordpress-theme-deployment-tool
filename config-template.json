@@ -13,8 +13,8 @@
         ".git",
         "Deployment",
         ".deployment",
-        "**/node_modules/**",
-        "**/vendor/**",
+        "**/node_modules",
+        "**/vendor",
         "vendor",
         "docs",
         ".gitignore",
@@ -33,5 +33,10 @@
         "gutenberg/constants",
         "gutenberg/src",
         "**/*.jsx"
-    ]
+    ],
+    "deployment": {
+        "steps": {
+            "composerInstall": "cd {remote_theme_path}/ThemeCore && composer install"
+        }
+    }
 }

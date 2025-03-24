@@ -2,19 +2,25 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { ConnectConfig } from "ssh2";
 
+// Интерфейс для конфигурации деплоя, определяющий команды для отдельных шагов
+export interface DeploymentConfig {
+    steps: Record<string, string>;
+}
+
 export interface Config {
     ssh: ConnectConfig;
     remote_theme_path: string;
     local_theme_path: string;
     exclude: string[];
+    deployment?: DeploymentConfig;
 }
 
 export class ConfigService {
     /**
-     * Загружает конфигурацию из указанного файла и валидирует её.
+     * Загружает конфигурацию из файла и валидирует её
      * @param configPath Путь к файлу конфигурации (по умолчанию "config.json")
      * @returns Объект с конфигурационными данными
-     * @throws Если файл не найден или данные не проходят валидацию
+     * @throws Если загрузка или валидация не проходит
      */
     public static async loadConfig(configPath: string = "config.json"): Promise<Config> {
         try {
@@ -28,10 +34,10 @@ export class ConfigService {
     }
 
     /**
-     * Валидирует объект конфигурации.
+     * Валидирует загруженную конфигурацию
      * @param config Объект, полученный из файла конфигурации
-     * @returns Объект, приведённый к типу Config
-     * @throws Если обнаружены несоответствия типов или отсутствуют обязательные поля
+     * @returns Приведённый к типу Config объект
+     * @throws Если данные не соответствуют ожидаемому формату
      */
     public static validateConfig(config: any): Config {
         if (typeof config.remote_theme_path !== "string") {
@@ -45,6 +51,12 @@ export class ConfigService {
         }
         if (!config.exclude.every((item: any) => typeof item === "string")) {
             throw new Error("Все элементы в 'exclude' должны быть строками");
+        }
+        // Если присутствует раздел deployment, проверяем его структуру
+        if (config.deployment) {
+            if (typeof config.deployment !== "object" || !config.deployment.steps || typeof config.deployment.steps !== "object") {
+                throw new Error("Поле 'deployment' должно быть объектом с полем 'steps'");
+            }
         }
         return config as Config;
     }
