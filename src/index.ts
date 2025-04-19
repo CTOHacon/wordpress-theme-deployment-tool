@@ -5,7 +5,9 @@ import { Deployer } from "./core/Deployer";
 import Logger from "./utils/Logger";
 import { rm, mkdir } from "fs/promises";
 
-async function main() {
+async function main(args: {
+    skipCompair?: boolean;
+}) {
     try {
         // 1. Загрузка конфигурации
         const config = await ConfigService.loadConfig();
@@ -33,8 +35,11 @@ async function main() {
         Logger.info("SSH соединение установлено");
 
         // 5. Получение списка файлов на сервере
-        const remoteFiles = await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude);
-        Logger.info(`На сервере найдено ${remoteFiles.length} файлов`);
+
+        const remoteFiles = !args.skipCompair ? await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude) : [];
+        if (!args.skipCompair) {
+            Logger.info(`На сервере найдено ${remoteFiles.length} файлов`);
+        }
 
         // 6. Синхронизация локальной сборки с сервером
         const syncResult = await Deployer.syncToRemote(
@@ -62,4 +67,10 @@ async function main() {
     }
 }
 
-main();
+const skipCompair = process.argv.includes("--skip-compair");
+
+main(
+    {
+        skipCompair
+    }
+);
