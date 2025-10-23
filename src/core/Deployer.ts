@@ -45,6 +45,9 @@ export class Deployer {
         const localFileMap = this.createLocalFileMap(localFiles);
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
+        // Деплой сборки через ZIP-архив
+        await this.deployUsingZip(sshClient, ".output", remoteThemePath);
+
         // Удаляем файлы, которых нет в локальной сборке
         await this.deleteUnneededRemoteFiles(
             sshClient,
@@ -54,9 +57,6 @@ export class Deployer {
             excludePatterns,
             result
         );
-
-        // Деплой сборки через ZIP-архив
-        await this.deployUsingZip(sshClient, ".output", remoteThemePath);
 
         // Выполнение дополнительных команд (например, установка Composer)
         const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);

@@ -36,7 +36,7 @@
     ],
     "deployment": {
         "steps": {
-            "composerInstall": "cd {remote_theme_path}/ThemeCore && composer install && composer update"
+            "composerInstall": "composer install && composer update"
         }
     }
 }
