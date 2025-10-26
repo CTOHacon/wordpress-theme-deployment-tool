@@ -184,11 +184,40 @@ Here's a full example with all options configured:
 
 ## Usage
 
-Once configured, deploy your theme with:
+### One-Time Deployment
+
+Deploy your theme once with:
 
 ```bash
 bun run deploy
 ```
+
+### SYNC Mode - Continuous File Watching
+
+For active development, use SYNC mode to automatically sync file changes to the server:
+
+```bash
+bun run sync
+```
+
+**What SYNC mode does:**
+
+1. **Initial Full Sync**: Performs a complete deployment first (same as `bun run deploy`)
+2. **Watch Mode**: Starts monitoring your `local_theme_path` for file changes
+3. **Auto-Sync**: Automatically uploads/deletes changed files to the remote server
+4. **Real-time Updates**: Changes are synced within ~500ms of detection
+5. **Persistent Connection**: Keeps SSH connection alive until you stop it
+
+**To stop SYNC mode:**
+- Press `Ctrl+C` to gracefully shutdown the watcher and close SSH connection
+
+**Best for:**
+- Active theme development
+- Quick iteration and testing
+- Instant preview of changes on staging server
+- Frontend development workflow
+
+**Note:** SYNC mode respects all `exclude` patterns from your config.json
 
 ### What Happens During Deployment
 
@@ -197,6 +226,25 @@ bun run deploy
 3. **Remote Cleanup**: Lists and removes outdated files on remote server
 4. **Upload**: Transfers files via SFTP (or ZIP for large deployments)
 5. **Post-Deployment**: Runs configured commands (e.g., `composerInstall`)
+
+### What Happens During SYNC Mode
+
+1. **Initial Full Deployment**: Same as above (steps 1-5)
+2. **File Watcher Activation**: Monitors `local_theme_path` directory recursively
+3. **Change Detection**: Detects file additions, modifications, and deletions
+4. **Debouncing**: Groups rapid changes together (500ms delay)
+5. **Incremental Sync**:
+   - **Added/Modified files**: Uploaded to remote server immediately
+   - **Deleted files**: Removed from remote server immediately
+6. **Continuous Monitoring**: Keeps running until manually stopped
+7. **Graceful Shutdown**: Properly closes watchers and SSH connection on exit
+
+**SYNC Mode Features:**
+- **Debounced updates**: Prevents sync spam during bulk operations (e.g., git checkout)
+- **Exclude patterns respected**: Only tracks files not in exclude list
+- **Error resilience**: Individual file sync failures don't crash the watcher
+- **Path normalization**: Handles Windows/Unix path differences automatically
+- **Smart directory handling**: Detects and syncs directory structure changes
 
 ---
 
@@ -240,6 +288,27 @@ bun run deploy
 - Check directory permissions on remote server
 - Ensure your user has write access to the theme directory
 
+### SYNC Mode Not Detecting Changes
+
+**Problem:** File changes aren't being synced
+
+**Solutions:**
+- Verify the file isn't in the `exclude` patterns
+- Check that SYNC mode is still running (look for the watching message)
+- Ensure the SSH connection hasn't dropped (restart SYNC mode)
+- On some systems, verify that recursive file watching is supported
+- Try saving the file again (some editors use atomic writes)
+
+### SYNC Mode Syncing Too Many Files
+
+**Problem:** Unwanted files are being synced
+
+**Solutions:**
+- Add more specific patterns to your `exclude` list
+- Check for hidden files like `.DS_Store` or editor temp files
+- Add `**/*.log`, `**/*.tmp`, `**/.*.swp` to excludes
+- Verify `node_modules` and `vendor` are properly excluded
+
 ---
 
 ## Security Best Practices
@@ -271,6 +340,8 @@ You can add custom post-deployment commands:
 }
 ```
 
+**Note:** Custom deployment commands only run during initial deployment, not on individual file changes in SYNC mode.
+
 ### Environment-Specific Configurations
 
 Create multiple config files for different environments:
@@ -284,8 +355,50 @@ Then modify `package.json` scripts:
 {
     "scripts": {
         "deploy": "bun run src/index.ts",
+        "sync": "bun run src/index.ts --sync",
         "deploy:staging": "cp config.staging.json config.json && bun run deploy",
-        "deploy:production": "cp config.production.json config.json && bun run deploy"
+        "deploy:production": "cp config.production.json config.json && bun run deploy",
+        "sync:staging": "cp config.staging.json config.json && bun run sync"
     }
 }
+```
+
+### SYNC Mode with Specific Excludes
+
+For SYNC mode, you might want to exclude additional files that change frequently but shouldn't trigger syncs:
+
+```json
+{
+    "exclude": [
+        ".git",
+        ".deployment",
+        "**/node_modules",
+        "**/vendor",
+        "**/*.log",
+        "**/*.tmp",
+        "**/.DS_Store",
+        "**/debug.log",
+        "**/*.map"
+    ]
+}
+```
+
+### Development Workflow Examples
+
+**Scenario 1: Frontend Development on Staging**
+```bash
+# Use SYNC mode for instant preview of CSS/JS changes
+bun run sync:staging
+```
+
+**Scenario 2: Production Deployment**
+```bash
+# One-time full deployment to production
+bun run deploy:production
+```
+
+**Scenario 3: Quick Theme Update**
+```bash
+# Deploy without comparing remote files (faster)
+bun run src/index.ts --skip-compair
 ```

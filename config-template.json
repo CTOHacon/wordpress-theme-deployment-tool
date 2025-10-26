@@ -18,6 +18,7 @@
         "vendor",
         "docs",
         ".gitignore",
+        ".github",
         "package-lock.json",
         "package.json",
         "composer.lock",

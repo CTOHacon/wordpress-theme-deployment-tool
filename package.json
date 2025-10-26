@@ -19,6 +19,7 @@
     "ssh2": "^1.16.0"
   },
   "scripts": {
-    "deploy": "bun run src/index.ts"
+    "deploy": "bun run src/index.ts",
+    "sync": "bun run src/index.ts --sync"
   }
 }

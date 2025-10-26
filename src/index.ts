@@ -2,11 +2,13 @@ import { ConfigService } from "./config/ConfigService";
 import { FileCollector } from "./core/FileCollector";
 import { SSHClient } from "./core/SSHClient";
 import { Deployer } from "./core/Deployer";
+import { FileWatcher } from "./core/FileWatcher";
 import Logger from "./utils/Logger";
 import { rm, mkdir } from "fs/promises";
 
 async function main(args: {
     skipCompair?: boolean;
+    syncMode?: boolean;
 }) {
     try {
         // 1. Загрузка конфигурации
@@ -35,7 +37,6 @@ async function main(args: {
         Logger.info("SSH соединение установлено");
 
         // 5. Получение списка файлов на сервере
-
         const remoteFiles = !args.skipCompair ? await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude) : [];
         if (!args.skipCompair) {
             Logger.info(`На сервере найдено ${remoteFiles.length} файлов`);
@@ -54,13 +55,51 @@ async function main(args: {
             `Синхронизация завершена: удалено ${syncResult.deleted}`
         );
 
-        // 7. Завершение SSH-соединения
-        sshClient.disconnect();
-        Logger.info("SSH соединение закрыто");
-
-        // 8. Очистка сборочной директории
+        // 7. Очистка сборочной директории
         await rm(outputDir, { recursive: true, force: true });
         Logger.info(`Сборочная директория ${outputDir} удалена`);
+
+        // 8. SYNC MODE: Watch for file changes
+        if (args.syncMode) {
+            Logger.info("=".repeat(60));
+            Logger.success("SYNC MODE: Watching for file changes...");
+            Logger.info("Press Ctrl+C to stop watching");
+            Logger.info("=".repeat(60));
+
+            const watcher = new FileWatcher(
+                config.local_theme_path,
+                config.remote_theme_path,
+                config.exclude,
+                sshClient
+            );
+
+            watcher.start();
+
+            // Keep the process running
+            await new Promise(() => {
+                // Handle graceful shutdown
+                process.on('SIGINT', () => {
+                    Logger.info("\nReceived SIGINT, shutting down...");
+                    watcher.stop();
+                    sshClient.disconnect();
+                    Logger.info("SSH соединение закрыто");
+                    process.exit(0);
+                });
+
+                process.on('SIGTERM', () => {
+                    Logger.info("\nReceived SIGTERM, shutting down...");
+                    watcher.stop();
+                    sshClient.disconnect();
+                    Logger.info("SSH соединение закрыто");
+                    process.exit(0);
+                });
+            });
+        } else {
+            // 9. Завершение SSH-соединения (только для обычного режима)
+            sshClient.disconnect();
+            Logger.info("SSH соединение закрыто");
+        }
+
     } catch (error) {
         Logger.error(`Ошибка в процессе деплоя: ${error}`);
         process.exit(1);
@@ -68,9 +107,9 @@ async function main(args: {
 }
 
 const skipCompair = process.argv.includes("--skip-compair");
+const syncMode = process.argv.includes("--sync");
 
-main(
-    {
-        skipCompair
-    }
-);
+main({
+    skipCompair,
+    syncMode
+});
