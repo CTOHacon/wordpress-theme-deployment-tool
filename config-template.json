@@ -33,7 +33,8 @@
         "gutenberg/components",
         "gutenberg/constants",
         "gutenberg/src",
-        "**/*.jsx"
+        "**/*.jsx",
+        "theme-require-mapping.json"
     ],
     "deployment": {
         "steps": {
