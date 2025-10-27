@@ -315,8 +315,18 @@ export class SSHClient {
      * Обеспечивает существование удалённой директории, создавая недостающие сегменты пути.
      */
     private async ensureRemoteDirectoryExists(remoteDirPath: string, remoteBasePath: string): Promise<void> {
-        const pathSegments = normalizePath(remoteDirPath).split('/').filter(Boolean);
-        let currentPath = remoteBasePath || '/';
+        const normalizedDirPath = normalizePath(remoteDirPath);
+        const normalizedBasePath = normalizePath(remoteBasePath);
+
+        // If remoteBasePath is provided, calculate relative path from base
+        let pathToCreate = normalizedDirPath;
+        if (normalizedBasePath && normalizedDirPath.startsWith(normalizedBasePath)) {
+            pathToCreate = normalizedDirPath.substring(normalizedBasePath.length).replace(/^\//, '');
+        }
+
+        const pathSegments = pathToCreate.split('/').filter(Boolean);
+        let currentPath = normalizedBasePath || '/';
+
         for (const segment of pathSegments) {
             currentPath = normalizePath(path.join(currentPath, segment));
             if (!(await this.remotePathExists(currentPath))) {
