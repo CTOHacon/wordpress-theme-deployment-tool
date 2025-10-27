@@ -139,8 +139,11 @@ export class FileWatcher {
      * Handles a file change event
      */
     private async handleFileChange(relativePath: string, fullPath: string, eventType: string): Promise<void> {
-        // Add to pending changes
-        this.pendingChanges.add(relativePath);
+        // Skip invalid paths
+        if (relativePath && relativePath.trim() !== '' && relativePath !== '.' && relativePath !== '/') {
+            // Add to pending changes
+            this.pendingChanges.add(relativePath);
+        }
 
         // If already processing, skip - the pending changes will be picked up
         if (this.isProcessing) {
@@ -154,11 +157,13 @@ export class FileWatcher {
             const changes = Array.from(this.pendingChanges);
             this.pendingChanges.clear();
 
-            Logger.info(`Processing ${changes.length} file change(s)...`);
+            if (changes.length > 0) {
+                Logger.info(`Processing ${changes.length} file change(s)...`);
 
-            for (const changePath of changes) {
-                const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
-                await this.syncSingleFile(changePath, changeFullPath);
+                for (const changePath of changes) {
+                    const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
+                    await this.syncSingleFile(changePath, changeFullPath);
+                }
             }
 
         } catch (error) {
@@ -168,7 +173,41 @@ export class FileWatcher {
 
             // If new changes accumulated, process them
             if (this.pendingChanges.size > 0) {
-                setTimeout(() => this.handleFileChange('', '', ''), 100);
+                // Use setImmediate or process.nextTick instead of passing empty strings
+                setImmediate(() => this.processPendingChanges());
+            }
+        }
+    }
+
+    /**
+     * Process any pending changes that accumulated during processing
+     */
+    private async processPendingChanges(): Promise<void> {
+        if (this.isProcessing || this.pendingChanges.size === 0) {
+            return;
+        }
+
+        this.isProcessing = true;
+
+        try {
+            const changes = Array.from(this.pendingChanges);
+            this.pendingChanges.clear();
+
+            Logger.info(`Processing ${changes.length} file change(s)...`);
+
+            for (const changePath of changes) {
+                const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
+                await this.syncSingleFile(changePath, changeFullPath);
+            }
+
+        } catch (error) {
+            Logger.error(`Error processing pending changes: ${error}`);
+        } finally {
+            this.isProcessing = false;
+
+            // Check again for new pending changes
+            if (this.pendingChanges.size > 0) {
+                setImmediate(() => this.processPendingChanges());
             }
         }
     }
@@ -177,6 +216,12 @@ export class FileWatcher {
      * Syncs a single file to the remote server
      */
     private async syncSingleFile(relativePath: string, fullPath: string): Promise<void> {
+        // Safety check: never allow empty or root-level paths
+        if (!relativePath || relativePath.trim() === '' || relativePath === '.' || relativePath === '/') {
+            Logger.warn(`Skipping invalid path: "${relativePath}"`);
+            return;
+        }
+
         try {
             // Check if file exists (to determine if it's add/update or delete)
             const exists = await this.fileExists(fullPath);
