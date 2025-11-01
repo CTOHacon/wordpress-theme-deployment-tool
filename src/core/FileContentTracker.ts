@@ -100,7 +100,7 @@ export class FileContentTracker {
     public async indexFiles(files: Array<{ fullPath: string; relativePath: string }>): Promise<void> {
         // Process files in parallel batches for faster indexing
         const BATCH_SIZE = 50; // Process 50 files at a time
-        
+
         for (let i = 0; i < files.length; i += BATCH_SIZE) {
             const batch = files.slice(i, i + BATCH_SIZE);
             await Promise.all(
