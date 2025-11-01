@@ -230,21 +230,28 @@ bun run sync
 ### What Happens During SYNC Mode
 
 1. **Initial Full Deployment**: Same as above (steps 1-5)
-2. **File Watcher Activation**: Monitors `local_theme_path` directory recursively
-3. **Change Detection**: Detects file additions, modifications, and deletions
-4. **Debouncing**: Groups rapid changes together (500ms delay)
-5. **Incremental Sync**:
-   - **Added/Modified files**: Uploaded to remote server immediately
+2. **File Indexing**: Scans and indexes all existing files to establish baseline content hashes
+3. **File Watcher Activation**: Monitors `local_theme_path` directory recursively
+4. **Change Detection**: Detects file additions, modifications, and deletions
+5. **Content Hash Verification**: Compares SHA-256 hash of file content to detect actual changes
+6. **Debouncing**: Groups rapid changes together (500ms delay)
+7. **Incremental Sync**:
+   - **Added/Modified files**: Uploaded to remote server only if content actually changed
    - **Deleted files**: Removed from remote server immediately
-6. **Continuous Monitoring**: Keeps running until manually stopped
-7. **Graceful Shutdown**: Properly closes watchers and SSH connection on exit
+   - **Skipped files**: Files with only timestamp changes (no content change) are skipped
+8. **Continuous Monitoring**: Keeps running until manually stopped
+9. **Graceful Shutdown**: Properly closes watchers and SSH connection on exit
 
 **SYNC Mode Features:**
+- **Initial file indexing**: Builds baseline hash map on startup to prevent unnecessary first-save uploads
+- **Content-based change detection**: Only syncs files when content actually changes, not just timestamp
+- **SHA-256 hashing**: Fast and reliable content comparison
 - **Debounced updates**: Prevents sync spam during bulk operations (e.g., git checkout)
 - **Exclude patterns respected**: Only tracks files not in exclude list
 - **Error resilience**: Individual file sync failures don't crash the watcher
 - **Path normalization**: Handles Windows/Unix path differences automatically
 - **Smart directory handling**: Detects and syncs directory structure changes
+- **Memory efficient**: Tracks file hashes in memory for quick comparison
 
 ---
 
@@ -298,6 +305,20 @@ bun run sync
 - Ensure the SSH connection hasn't dropped (restart SYNC mode)
 - On some systems, verify that recursive file watching is supported
 - Try saving the file again (some editors use atomic writes)
+
+### SYNC Mode Uploading on Every Save (Even Without Changes)
+
+**Problem:** Files are uploaded every time you save, even when content hasn't changed
+
+**Solution:** This is now fixed! The sync tool uses SHA-256 content hashing to detect actual changes. You should see:
+- **"SKIP No content change: filename"** - File was saved but content is identical
+- **"SYNC Uploading: filename"** - File content actually changed and will be uploaded
+
+**How it works:**
+1. On startup, SYNC mode indexes all existing files and creates baseline hashes
+2. When you save a file, it compares the new hash with the baseline
+3. Only uploads if the content hash differs
+4. Even the first save after starting SYNC mode won't upload if content is unchanged
 
 ### SYNC Mode Syncing Too Many Files
 

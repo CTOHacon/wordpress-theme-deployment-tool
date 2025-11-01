@@ -73,6 +73,9 @@ async function main(args: {
                 sshClient
             );
 
+            // Initialize by indexing existing files
+            await watcher.initialize();
+
             watcher.start();
 
             // Keep the process running

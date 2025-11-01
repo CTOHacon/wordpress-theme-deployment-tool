@@ -9,6 +9,8 @@ enum LogLevel {
     UPDATE = "UPDATE",
     DELETE = "DELETE",
     SUCCESS = "SUCCESS",
+    SKIP = "SKIP",
+    SYNC = "SYNC",
 }
 
 export default class Logger {
@@ -44,6 +46,12 @@ export default class Logger {
                 break;
             case LogLevel.SUCCESS:
                 styledTitle = chalk.bgGreen.white.bold(` ${level} `);
+                break;
+            case LogLevel.SKIP:
+                styledTitle = chalk.bgGray.white.bold(` ${level} `);
+                break;
+            case LogLevel.SYNC:
+                styledTitle = chalk.bgCyan.white.bold(` ${level} `);
                 break;
             default:
                 styledTitle = chalk.bgMagenta.white.bold(" LOG ");

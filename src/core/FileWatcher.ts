@@ -5,6 +5,7 @@ import Logger from "../utils/Logger";
 import type { SSHClient } from "./SSHClient";
 import { FileCollector } from "./FileCollector";
 import { rm } from "fs/promises";
+import { FileContentTracker } from "./FileContentTracker";
 
 export enum FileChangeType {
     ADD = "ADD",
@@ -24,6 +25,7 @@ export class FileWatcher {
     private readonly debounceDelay = 500; // ms
     private isProcessing = false;
     private pendingChanges: Set<string> = new Set();
+    private contentTracker: FileContentTracker = new FileContentTracker();
 
     constructor(
         private localThemePath: string,
@@ -31,6 +33,57 @@ export class FileWatcher {
         private excludePatterns: string[],
         private sshClient: SSHClient
     ) { }
+
+    /**
+     * Initializes the file watcher by indexing existing files
+     * This creates a baseline so that the first save won't trigger an upload
+     */
+    public async initialize(): Promise<void> {
+        Logger.info("Indexing existing files for content tracking...");
+
+        const absolutePath = path.resolve(this.localThemePath);
+        const files = await this.collectFilesRecursively(absolutePath, absolutePath);
+
+        await this.contentTracker.indexFiles(files);
+
+        Logger.success(`Indexed ${files.length} files`);
+    }
+
+    /**
+     * Recursively collects all files in a directory
+     */
+    private async collectFilesRecursively(
+        dirPath: string,
+        basePath: string
+    ): Promise<Array<{ fullPath: string; relativePath: string }>> {
+        const files: Array<{ fullPath: string; relativePath: string }> = [];
+
+        try {
+            const fs = await import('fs/promises');
+            const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+            for (const entry of entries) {
+                const fullPath = path.join(dirPath, entry.name);
+                const relativePath = path.relative(basePath, fullPath);
+
+                // Skip if matches exclude patterns
+                if (this.shouldExclude(relativePath, fullPath)) {
+                    continue;
+                }
+
+                if (entry.isDirectory()) {
+                    const subFiles = await this.collectFilesRecursively(fullPath, basePath);
+                    files.push(...subFiles);
+                } else if (entry.isFile()) {
+                    files.push({ fullPath, relativePath });
+                }
+            }
+        } catch (error) {
+            Logger.warn(`Error reading directory ${dirPath}: ${error}`);
+        }
+
+        return files;
+    }
 
     /**
      * Starts watching the local theme directory for changes
@@ -74,6 +127,9 @@ export class FileWatcher {
         // Clear all debounce timers
         this.debounceTimers.forEach(timer => clearTimeout(timer));
         this.debounceTimers.clear();
+
+        // Clear content tracker
+        this.contentTracker.clear();
 
         Logger.success("File watchers stopped");
     }
@@ -158,8 +214,6 @@ export class FileWatcher {
             this.pendingChanges.clear();
 
             if (changes.length > 0) {
-                Logger.info(`Processing ${changes.length} file change(s)...`);
-
                 for (const changePath of changes) {
                     const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
                     await this.syncSingleFile(changePath, changeFullPath);
@@ -193,8 +247,6 @@ export class FileWatcher {
             const changes = Array.from(this.pendingChanges);
             this.pendingChanges.clear();
 
-            Logger.info(`Processing ${changes.length} file change(s)...`);
-
             for (const changePath of changes) {
                 const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
                 await this.syncSingleFile(changePath, changeFullPath);
@@ -227,7 +279,15 @@ export class FileWatcher {
             const exists = await this.fileExists(fullPath);
 
             if (exists) {
-                // File was added or modified
+                // Check if content actually changed
+                const hasChanged = await this.contentTracker.hasContentChanged(fullPath, relativePath);
+
+                if (!hasChanged) {
+                    // Logger.log("SKIP", `No content change: ${relativePath}`);
+                    return;
+                }
+
+                // File was added or modified with actual content changes
                 const remotePath = path.join(this.remoteThemePath, relativePath).replace(/\\/g, '/');
 
                 Logger.log("SYNC", `Uploading: ${relativePath}`);
@@ -235,10 +295,14 @@ export class FileWatcher {
                 Logger.log("SUCCESS", `Synced: ${relativePath}`);
 
             } else {
-                // File was deleted
-                const remotePath = path.join(this.remoteThemePath, relativePath).replace(/\\/g, '/');
+                // File was deleted - check if we were tracking it
+                const wasTracked = this.contentTracker.size() > 0;
 
-                Logger.log("SYNC", `Deleting: ${relativePath}`);
+                // Mark as deleted in tracker
+                this.contentTracker.markAsDeleted(relativePath);
+
+                // Only try to delete if we have reason to believe it existed
+                const remotePath = path.join(this.remoteThemePath, relativePath).replace(/\\/g, '/');
 
                 // Try to delete as file first, then as directory
                 try {
