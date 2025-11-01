@@ -244,6 +244,7 @@ bun run sync
 
 **SYNC Mode Features:**
 - **Initial file indexing**: Builds baseline hash map on startup to prevent unnecessary first-save uploads
+- **Parallel processing**: Files are indexed and synced in parallel for maximum speed
 - **Content-based change detection**: Only syncs files when content actually changes, not just timestamp
 - **SHA-256 hashing**: Fast and reliable content comparison
 - **Debounced updates**: Prevents sync spam during bulk operations (e.g., git checkout)

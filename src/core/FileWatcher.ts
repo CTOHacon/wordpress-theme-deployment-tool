@@ -214,10 +214,13 @@ export class FileWatcher {
             this.pendingChanges.clear();
 
             if (changes.length > 0) {
-                for (const changePath of changes) {
-                    const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
-                    await this.syncSingleFile(changePath, changeFullPath);
-                }
+                // Process files in parallel
+                await Promise.all(
+                    changes.map(async (changePath) => {
+                        const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
+                        await this.syncSingleFile(changePath, changeFullPath);
+                    })
+                );
             }
 
         } catch (error) {
@@ -247,10 +250,13 @@ export class FileWatcher {
             const changes = Array.from(this.pendingChanges);
             this.pendingChanges.clear();
 
-            for (const changePath of changes) {
-                const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
-                await this.syncSingleFile(changePath, changeFullPath);
-            }
+            // Process files in parallel
+            await Promise.all(
+                changes.map(async (changePath) => {
+                    const changeFullPath = path.join(path.resolve(this.localThemePath), changePath);
+                    await this.syncSingleFile(changePath, changeFullPath);
+                })
+            );
 
         } catch (error) {
             Logger.error(`Error processing pending changes: ${error}`);
@@ -290,7 +296,7 @@ export class FileWatcher {
                 // File was added or modified with actual content changes
                 const remotePath = path.join(this.remoteThemePath, relativePath).replace(/\\/g, '/');
 
-                Logger.log("SYNC", `Uploading: ${relativePath}`);
+                // Logger.log("SYNC", `Uploading: ${relativePath}`);
                 await this.sshClient.uploadFile(fullPath, remotePath, this.remoteThemePath);
                 Logger.log("SUCCESS", `Synced: ${relativePath}`);
 

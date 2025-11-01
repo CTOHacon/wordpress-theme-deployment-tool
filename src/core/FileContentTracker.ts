@@ -98,8 +98,14 @@ export class FileContentTracker {
      * @param files Array of {fullPath, relativePath} objects
      */
     public async indexFiles(files: Array<{ fullPath: string; relativePath: string }>): Promise<void> {
-        for (const file of files) {
-            await this.updateHash(file.fullPath, file.relativePath);
+        // Process files in parallel batches for faster indexing
+        const BATCH_SIZE = 50; // Process 50 files at a time
+        
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batch = files.slice(i, i + BATCH_SIZE);
+            await Promise.all(
+                batch.map(file => this.updateHash(file.fullPath, file.relativePath))
+            );
         }
     }
 }
