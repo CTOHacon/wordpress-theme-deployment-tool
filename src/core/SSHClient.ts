@@ -185,7 +185,7 @@ export class SSHClient {
     }
 
     /**
-     * Загружает локальный файл на сервер.
+     * Загружает локальный файл на сервер с сохранением времени модификации.
      */
     public async uploadFile(
         localFilePath: string,
@@ -197,15 +197,127 @@ export class SSHClient {
         if (remoteDir) {
             await this.ensureRemoteDirectoryExists(remoteDir, remoteBasePath);
         }
+        
+        // Get local file modification time
+        const localStats = await fs.promises.stat(localFilePath);
+        const mtime = Math.floor(localStats.mtime.getTime() / 1000);
+        
         return new Promise((resolve, reject) => {
-            this.sftp!.fastPut(localFilePath, remoteFilePath, (err) => {
+            this.sftp!.fastPut(localFilePath, remoteFilePath, async (err) => {
                 if (err) {
                     reject(new Error(`Failed to upload file to ${remoteFilePath}: ${err.message}`));
                 } else {
-                    resolve();
+                    // Preserve modification time on the remote file
+                    this.sftp!.utimes(remoteFilePath, mtime, mtime, (utimesErr) => {
+                        if (utimesErr) {
+                            // Non-critical error, just log and continue
+                            console.warn(`Warning: Could not set mtime for ${remoteFilePath}`);
+                        }
+                        resolve();
+                    });
                 }
             });
         });
+    }
+
+    /**
+     * Получает информацию о файле на сервере (время модификации и размер).
+     * Возвращает null если файл не существует.
+     */
+    public async getRemoteFileStat(remotePath: string): Promise<{ mtime: Date; size: number } | null> {
+        this.ensureSftpSession();
+        return new Promise((resolve) => {
+            this.sftp!.stat(remotePath, (err, stats) => {
+                if (err) {
+                    resolve(null);
+                } else {
+                    resolve({
+                        mtime: new Date(stats.mtime * 1000),
+                        size: stats.size
+                    });
+                }
+            });
+        });
+    }
+
+    /**
+     * Загружает файлы из локальной папки на сервер через SFTP.
+     * Загружает только файлы, которые отсутствуют на сервере или были изменены.
+     * Сохраняет время модификации файлов для оптимизации последующих деплоев.
+     */
+    public async uploadFolderViaSFTP(
+        localFolderPath: string,
+        remoteFolderPath: string
+    ): Promise<{ uploaded: number; skipped: number; total: number }> {
+        this.ensureSftpSession();
+        await this.ensureRemoteDirectoryExists(remoteFolderPath, "");
+        
+        const files = await this.collectLocalFiles(localFolderPath);
+        let uploaded = 0;
+        let skipped = 0;
+        const total = files.length;
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const remoteFilePath = normalizePath(path.join(remoteFolderPath, file.relativePath));
+            
+            // Get local file stats
+            const localStats = await fs.promises.stat(file.absolutePath);
+            const localMtime = Math.floor(localStats.mtime.getTime() / 1000);
+            const localSize = localStats.size;
+            
+            // Get remote file stats (if exists)
+            const remoteStat = await this.getRemoteFileStat(remoteFilePath);
+            
+            // Compare: upload if file doesn't exist, size differs, or local is newer
+            const needsUpload = !remoteStat || 
+                remoteStat.size !== localSize || 
+                localMtime > Math.floor(remoteStat.mtime.getTime() / 1000);
+            
+            if (needsUpload) {
+                await this.uploadFile(file.absolutePath, remoteFilePath, remoteFolderPath);
+                uploaded++;
+            } else {
+                skipped++;
+            }
+            
+            // Progress indicator
+            const processed = i + 1;
+            if (processed % 10 === 0 || processed === total) {
+                process.stdout.write(`\r  Processing: ${processed}/${total} files (${uploaded} uploaded, ${skipped} skipped)`);
+            }
+        }
+        console.log(); // New line after progress
+        
+        return { uploaded, skipped, total };
+    }
+
+    /**
+     * Рекурсивно собирает локальные файлы из директории.
+     */
+    private async collectLocalFiles(basePath: string): Promise<Array<{ absolutePath: string; relativePath: string }>> {
+        const files: Array<{ absolutePath: string; relativePath: string }> = [];
+        const absoluteBasePath = path.resolve(basePath);
+
+        const traverse = async (currentPath: string): Promise<void> => {
+            const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+            for (const entry of entries) {
+                const entryAbsolutePath = path.join(currentPath, entry.name);
+                const entryRelativePath = normalizePath(path.relative(absoluteBasePath, entryAbsolutePath));
+
+                if (entry.isDirectory()) {
+                    await traverse(entryAbsolutePath);
+                } else if (entry.isFile()) {
+                    files.push({
+                        absolutePath: entryAbsolutePath,
+                        relativePath: entryRelativePath,
+                    });
+                }
+            }
+        };
+
+        await traverse(absoluteBasePath);
+        return files;
     }
 
     /**

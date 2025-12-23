@@ -45,8 +45,8 @@ export class Deployer {
         const localFileMap = this.createLocalFileMap(localFiles);
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
-        // Деплой сборки через ZIP-архив
-        await this.deployUsingZip(sshClient, ".output", remoteThemePath);
+        // Деплой сборки через SFTP (прямая загрузка файлов)
+        await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
 
         // Удаляем файлы, которых нет в локальной сборке
         await this.deleteUnneededRemoteFiles(
@@ -59,12 +59,13 @@ export class Deployer {
         );
 
         // Выполнение дополнительных команд (например, установка Composer)
-        const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
-        if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
-            const cmd = deploymentConfig.steps.composerInstall.replace("{remote_theme_path}", remoteThemePath);
-            Logger.info(`Выполняется команда деплоя: ${cmd}`);
-            await sshClient.executeCommand(cmd);
-        }
+        // ПРИМЕЧАНИЕ: Отключено, так как shell-доступ не включён на сервере
+        // const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
+        // if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
+        //     const cmd = deploymentConfig.steps.composerInstall.replace("{remote_theme_path}", remoteThemePath);
+        //     Logger.info(`Выполняется команда деплоя: ${cmd}`);
+        //     await sshClient.executeCommand(cmd);
+        // }
 
         return result;
     }
@@ -171,13 +172,13 @@ export class Deployer {
     }
 
     /**
-     * Деплой сборки через ZIP архив.
-     * Упаковывает локальную директорию, загружает архив, извлекает его на сервере и удаляет архив.
+     * Деплой сборки напрямую через SFTP (без использования ZIP и shell-команд).
+     * Загружает только изменённые или новые файлы.
      */
-    private static async deployUsingZip(sshClient: SSHClient, localFolderPath: string, remoteDestPath: string): Promise<void> {
-        Logger.info("Запуск деплоя сборки через ZIP архив.");
-        await sshClient.uploadFolderAsZip(localFolderPath, remoteDestPath);
-        Logger.log(Operation.UPLOAD, "Деплой через ZIP завершён.");
+    private static async deployUsingSFTP(sshClient: SSHClient, localFolderPath: string, remoteDestPath: string): Promise<void> {
+        Logger.info("Запуск деплоя через SFTP (прямая загрузка файлов)...");
+        const result = await sshClient.uploadFolderViaSFTP(localFolderPath, remoteDestPath);
+        Logger.log(Operation.UPLOAD, `Деплой через SFTP завершён: ${result.uploaded} загружено, ${result.skipped} пропущено (без изменений)`);
     }
 
     /**
