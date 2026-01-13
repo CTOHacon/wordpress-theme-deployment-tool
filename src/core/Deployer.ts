@@ -45,8 +45,17 @@ export class Deployer {
         const localFileMap = this.createLocalFileMap(localFiles);
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
-        // Деплой сборки через SFTP (прямая загрузка файлов)
-        await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
+        // Проверяем доступность unzip на сервере и выбираем метод деплоя
+        Logger.info("Проверка доступности команды unzip на сервере...");
+        const hasUnzip = await sshClient.checkUnzipAvailable();
+
+        if (hasUnzip) {
+            Logger.success("Команда unzip доступна, используется ZIP-метод деплоя");
+            await this.deployUsingZip(sshClient, ".output", remoteThemePath);
+        } else {
+            Logger.warn("Команда unzip недоступна, используется прямая загрузка через SFTP");
+            await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
+        }
 
         // Удаляем файлы, которых нет в локальной сборке
         await this.deleteUnneededRemoteFiles(
@@ -169,6 +178,16 @@ export class Deployer {
                 fileMap.delete(key);
             }
         }
+    }
+
+    /**
+     * Деплой сборки через ZIP-архив (быстрее для больших объёмов файлов).
+     * Создаёт ZIP-архив, загружает его на сервер, распаковывает и удаляет.
+     */
+    private static async deployUsingZip(sshClient: SSHClient, localFolderPath: string, remoteDestPath: string): Promise<void> {
+        Logger.info("Запуск деплоя через ZIP-архив...");
+        await sshClient.uploadFolderAsZip(localFolderPath, remoteDestPath);
+        Logger.log(Operation.UPLOAD, "Деплой через ZIP завершён успешно");
     }
 
     /**

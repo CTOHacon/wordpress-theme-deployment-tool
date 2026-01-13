@@ -197,11 +197,11 @@ export class SSHClient {
         if (remoteDir) {
             await this.ensureRemoteDirectoryExists(remoteDir, remoteBasePath);
         }
-        
+
         // Get local file modification time
         const localStats = await fs.promises.stat(localFilePath);
         const mtime = Math.floor(localStats.mtime.getTime() / 1000);
-        
+
         return new Promise((resolve, reject) => {
             this.sftp!.fastPut(localFilePath, remoteFilePath, async (err) => {
                 if (err) {
@@ -251,36 +251,36 @@ export class SSHClient {
     ): Promise<{ uploaded: number; skipped: number; total: number }> {
         this.ensureSftpSession();
         await this.ensureRemoteDirectoryExists(remoteFolderPath, "");
-        
+
         const files = await this.collectLocalFiles(localFolderPath);
         let uploaded = 0;
         let skipped = 0;
         const total = files.length;
-        
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const remoteFilePath = normalizePath(path.join(remoteFolderPath, file.relativePath));
-            
+
             // Get local file stats
             const localStats = await fs.promises.stat(file.absolutePath);
             const localMtime = Math.floor(localStats.mtime.getTime() / 1000);
             const localSize = localStats.size;
-            
+
             // Get remote file stats (if exists)
             const remoteStat = await this.getRemoteFileStat(remoteFilePath);
-            
+
             // Compare: upload if file doesn't exist, size differs, or local is newer
-            const needsUpload = !remoteStat || 
-                remoteStat.size !== localSize || 
+            const needsUpload = !remoteStat ||
+                remoteStat.size !== localSize ||
                 localMtime > Math.floor(remoteStat.mtime.getTime() / 1000);
-            
+
             if (needsUpload) {
                 await this.uploadFile(file.absolutePath, remoteFilePath, remoteFolderPath);
                 uploaded++;
             } else {
                 skipped++;
             }
-            
+
             // Progress indicator
             const processed = i + 1;
             if (processed % 10 === 0 || processed === total) {
@@ -288,7 +288,7 @@ export class SSHClient {
             }
         }
         console.log(); // New line after progress
-        
+
         return { uploaded, skipped, total };
     }
 
@@ -318,6 +318,18 @@ export class SSHClient {
 
         await traverse(absoluteBasePath);
         return files;
+    }
+
+    /**
+     * Проверяет наличие команды unzip на сервере.
+     */
+    public async checkUnzipAvailable(): Promise<boolean> {
+        try {
+            const result = await this.executeCommand('which unzip');
+            return result.trim().length > 0;
+        } catch (error) {
+            return false;
+        }
     }
 
     /**
