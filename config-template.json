@@ -19,6 +19,7 @@
         "docs",
         ".gitignore",
         ".github",
+        ".claude",
         "package-lock.json",
         "package.json",
         "composer.lock",
