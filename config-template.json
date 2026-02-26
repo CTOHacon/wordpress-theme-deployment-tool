@@ -34,6 +34,7 @@
         "gutenberg/components",
         "gutenberg/constants",
         "gutenberg/src",
+        "gutenberg/node_modules",
         "**/*.jsx",
         "theme-require-mapping.json"
     ],
