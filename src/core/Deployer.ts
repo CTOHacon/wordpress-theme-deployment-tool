@@ -68,13 +68,12 @@ export class Deployer {
         );
 
         // Выполнение дополнительных команд (например, установка Composer)
-        // ПРИМЕЧАНИЕ: Отключено, так как shell-доступ не включён на сервере
-        // const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
-        // if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
-        //     const cmd = deploymentConfig.steps.composerInstall.replace("{remote_theme_path}", remoteThemePath);
-        //     Logger.info(`Выполняется команда деплоя: ${cmd}`);
-        //     await sshClient.executeCommand(cmd);
-        // }
+        const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
+        if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
+            const cmd = deploymentConfig.steps.composerInstall.replace("{remote_theme_path}", remoteThemePath);
+            Logger.info(`Выполняется команда деплоя: ${cmd}`);
+            await sshClient.executeCommand(cmd);
+        }
 
         return result;
     }

@@ -36,11 +36,12 @@
         "gutenberg/src",
         "gutenberg/node_modules",
         "**/*.jsx",
+        "**/*.md",
         "theme-require-mapping.json"
     ],
     "deployment": {
         "steps": {
-            "composerInstall": "composer install && composer update"
+            "composerInstall": "cd {remote_theme_path} && composer install && composer update"
         }
     }
 }
