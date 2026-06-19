@@ -192,3 +192,5 @@ scratch*.{js,ts,tsx,cjs,mjs}
 *.bun-build
 ssh_key
 ssh_passphrase
+
+.backsync

@@ -20,6 +20,7 @@
   },
   "scripts": {
     "deploy": "bun run src/index.ts",
-    "sync": "bun run src/index.ts --sync"
+    "sync": "bun run src/index.ts --sync",
+    "pull": "bun run src/index.ts --pull"
   }
 }

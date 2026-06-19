@@ -2,6 +2,7 @@ import { ConfigService } from "./config/ConfigService";
 import { FileCollector } from "./core/FileCollector";
 import { SSHClient } from "./core/SSHClient";
 import { Deployer } from "./core/Deployer";
+import { BackSync } from "./core/BackSync";
 import { FileWatcher } from "./core/FileWatcher";
 import Logger from "./utils/Logger";
 import { rm, mkdir } from "fs/promises";
@@ -9,11 +10,25 @@ import { rm, mkdir } from "fs/promises";
 async function main(args: {
     skipCompair?: boolean;
     syncMode?: boolean;
+    pullMode?: boolean;
 }) {
     try {
         // 1. Загрузка конфигурации
         const config = await ConfigService.loadConfig();
         Logger.info("Конфигурация загружена");
+
+        // Обратная синхронизация (backward sync): скачать тему с сервера и выйти
+        if (args.pullMode) {
+            const sshClient = new SSHClient();
+            await sshClient.connect(config.ssh);
+            Logger.info("SSH соединение установлено");
+
+            await BackSync.pullFromRemote(sshClient, config);
+
+            sshClient.disconnect();
+            Logger.info("SSH соединение закрыто");
+            return;
+        }
 
         // 2. Сбор локальных файлов с учётом exclude-паттернов
         const localFiles = await FileCollector.collectFiles(config.local_theme_path, config.exclude);
@@ -111,8 +126,10 @@ async function main(args: {
 
 const skipCompair = process.argv.includes("--skip-compair");
 const syncMode = process.argv.includes("--sync");
+const pullMode = process.argv.includes("--pull");
 
 main({
     skipCompair,
-    syncMode
+    syncMode,
+    pullMode
 });

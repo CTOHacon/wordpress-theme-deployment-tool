@@ -321,6 +321,64 @@ export class SSHClient {
     }
 
     /**
+     * Скачивает один файл с сервера, создавая локальные директории при необходимости.
+     */
+    public async downloadFile(remoteFilePath: string, localFilePath: string): Promise<void> {
+        this.ensureSftpSession();
+        await fs.promises.mkdir(path.dirname(localFilePath), { recursive: true });
+        return new Promise((resolve, reject) => {
+            this.sftp!.fastGet(remoteFilePath, localFilePath, (err) => {
+                if (err) reject(new Error(`Failed to download file ${remoteFilePath}: ${err.message}`));
+                else resolve();
+            });
+        });
+    }
+
+    /**
+     * Рекурсивно скачивает удалённую папку в локальную директорию через SFTP.
+     * Зеркальная операция к uploadFolderViaSFTP — используется для обратной синхронизации.
+     * @param skipDirs Имена директорий, которые нужно пропустить (vcs, зависимости и т.п.)
+     */
+    public async downloadFolderViaSFTP(
+        remoteFolderPath: string,
+        localFolderPath: string,
+        skipDirs: string[] = []
+    ): Promise<{ downloaded: number; total: number }> {
+        this.ensureSftpSession();
+        const skip = new Set(skipDirs);
+
+        // Сначала собираем полный список файлов (без директорий)
+        const files: Array<{ remote: string; local: string }> = [];
+        const collect = async (remoteDir: string, localDir: string): Promise<void> => {
+            const entries = await this.readRemoteDirectory(remoteDir);
+            for (const entry of entries) {
+                const remotePath = normalizePath(path.join(remoteDir, entry.filename));
+                const localPath = path.join(localDir, entry.filename);
+                if (this.isDirectory(entry)) {
+                    if (skip.has(entry.filename)) continue;
+                    await collect(remotePath, localPath);
+                } else {
+                    files.push({ remote: remotePath, local: localPath });
+                }
+            }
+        };
+        await collect(remoteFolderPath, localFolderPath);
+
+        let downloaded = 0;
+        const total = files.length;
+        for (const file of files) {
+            await this.downloadFile(file.remote, file.local);
+            downloaded++;
+            if (downloaded % 10 === 0 || downloaded === total) {
+                process.stdout.write(`\r  Downloading: ${downloaded}/${total} files`);
+            }
+        }
+        console.log(); // New line after progress
+
+        return { downloaded, total };
+    }
+
+    /**
      * Проверяет наличие команды unzip на сервере.
      */
     public async checkUnzipAvailable(): Promise<boolean> {
