@@ -15,10 +15,10 @@ enum LogLevel {
 
 export default class Logger {
     /**
-     * Форматирует сообщение с использованием заданного уровня логирования.
-     * @param level Уровень логирования.
-     * @param message Сообщение для вывода.
-     * @returns Отформатированная строка.
+     * Formats a message using the given log level.
+     * @param level Log level.
+     * @param message Message to output.
+     * @returns Formatted string.
      */
     private static formatMessage(level: LogLevel, message: string): string {
         let styledTitle: string;
@@ -80,10 +80,10 @@ export default class Logger {
     }
 
     /**
-     * Выводит сообщение с произвольным уровнем логирования.
-     * Если переданный уровень не соответствует предопределённым, используется DEBUG.
-     * @param level Уровень логирования или тип операции.
-     * @param message Сообщение для вывода.
+     * Outputs a message with an arbitrary log level.
+     * If the given level does not match predefined levels, DEBUG is used.
+     * @param level Log level or operation type.
+     * @param message Message to output.
      */
     public static log(level: string, message: string): void {
         const validLevels = Object.values(LogLevel);

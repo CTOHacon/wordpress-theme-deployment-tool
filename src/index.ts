@@ -13,51 +13,51 @@ async function main(args: {
     pullMode?: boolean;
 }) {
     try {
-        // 1. Загрузка конфигурации
+        // 1. Load configuration
         const config = await ConfigService.loadConfig();
-        Logger.info("Конфигурация загружена");
+        Logger.info("Configuration loaded");
 
-        // Обратная синхронизация (backward sync): скачать тему с сервера и выйти
+        // Back sync: download theme from server and exit
         if (args.pullMode) {
             const sshClient = new SSHClient();
             await sshClient.connect(config.ssh);
-            Logger.info("SSH соединение установлено");
+            Logger.info("SSH connection established");
 
             await BackSync.pullFromRemote(sshClient, config);
 
             sshClient.disconnect();
-            Logger.info("SSH соединение закрыто");
+            Logger.info("SSH connection closed");
             return;
         }
 
-        // 2. Сбор локальных файлов с учётом exclude-паттернов
+        // 2. Collect local files respecting exclude patterns
         const localFiles = await FileCollector.collectFiles(config.local_theme_path, config.exclude);
-        Logger.info(`Найдено ${localFiles.length} локальных файлов`);
+        Logger.info(`Found ${localFiles.length} local files`);
 
-        // 3. Копирование файлов в сборочную директорию (.output)
+        // 3. Copy files to build directory (.output)
         const outputDir = ".output";
         try {
             await rm(outputDir, { recursive: true, force: true });
-            Logger.info(`Старая директория ${outputDir} удалена`);
+            Logger.info(`Old directory ${outputDir} removed`);
         } catch (error) {
-            Logger.warn(`Ошибка при удалении ${outputDir}: ${error}`);
+            Logger.warn(`Error removing ${outputDir}: ${error}`);
         }
         await mkdir(outputDir, { recursive: true });
         await FileCollector.copyFilesToOutput(localFiles, outputDir);
-        Logger.info(`Файлы скопированы в ${outputDir}`);
+        Logger.info(`Files copied to ${outputDir}`);
 
-        // 4. Установка SSH-соединения
+        // 4. Establish SSH connection
         const sshClient = new SSHClient();
         await sshClient.connect(config.ssh);
-        Logger.info("SSH соединение установлено");
+        Logger.info("SSH connection established");
 
-        // 5. Получение списка файлов на сервере
+        // 5. Get file list from server
         const remoteFiles = !args.skipCompair ? await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude) : [];
         if (!args.skipCompair) {
-            Logger.info(`На сервере найдено ${remoteFiles.length} файлов`);
+            Logger.info(`Found ${remoteFiles.length} files on server`);
         }
 
-        // 6. Синхронизация локальной сборки с сервером
+        // 6. Sync local build to server
         const syncResult = await Deployer.syncToRemote(
             sshClient,
             localFiles,
@@ -67,12 +67,12 @@ async function main(args: {
             config
         );
         Logger.success(
-            `Синхронизация завершена: удалено ${syncResult.deleted}`
+            `Sync complete: deleted ${syncResult.deleted}`
         );
 
-        // 7. Очистка сборочной директории
+        // 7. Clean up build directory
         await rm(outputDir, { recursive: true, force: true });
-        Logger.info(`Сборочная директория ${outputDir} удалена`);
+        Logger.info(`Build directory ${outputDir} removed`);
 
         // 8. SYNC MODE: Watch for file changes
         if (args.syncMode) {
@@ -100,7 +100,7 @@ async function main(args: {
                     Logger.info("\nReceived SIGINT, shutting down...");
                     watcher.stop();
                     sshClient.disconnect();
-                    Logger.info("SSH соединение закрыто");
+                    Logger.info("SSH connection closed");
                     process.exit(0);
                 });
 
@@ -108,18 +108,18 @@ async function main(args: {
                     Logger.info("\nReceived SIGTERM, shutting down...");
                     watcher.stop();
                     sshClient.disconnect();
-                    Logger.info("SSH соединение закрыто");
+                    Logger.info("SSH connection closed");
                     process.exit(0);
                 });
             });
         } else {
-            // 9. Завершение SSH-соединения (только для обычного режима)
+            // 9. Close SSH connection (normal mode only)
             sshClient.disconnect();
-            Logger.info("SSH соединение закрыто");
+            Logger.info("SSH connection closed");
         }
 
     } catch (error) {
-        Logger.error(`Ошибка в процессе деплоя: ${error}`);
+        Logger.error(`Deploy error: ${error}`);
         process.exit(1);
     }
 }

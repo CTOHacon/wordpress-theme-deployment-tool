@@ -5,10 +5,10 @@ import path from "path";
 import { normalizePath } from "../utils/PathUtils";
 import { minimatch } from "minimatch";
 
-// Интерфейс для описания файла на удалённом сервере
+// Interface for describing a file on the remote server
 export interface SSHFileInfo {
     filename: string;
-    longname?: string; // Добавлено опциональное свойство
+    longname?: string; // Optional property
     fullPath: string;
     attrs: {
         mode: number;
@@ -32,8 +32,8 @@ export class SSHClient {
     }
 
     /**
-     * Устанавливает SSH-соединение и инициализирует SFTP-сессию.
-     * Если указан privateKey, он считывается из файла.
+     * Establishes an SSH connection and initializes an SFTP session.
+     * If privateKey is provided, it is read from the file.
      */
     public async connect(config: ConnectConfig): Promise<void> {
         if (config.privateKey) {
@@ -60,17 +60,17 @@ export class SSHClient {
     }
 
     /**
-     * Закрывает SSH-соединение.
+     * Closes the SSH connection.
      */
     public disconnect(): void {
         this.client.end();
     }
 
     /**
-     * Возвращает список файлов и директорий по указанному пути на сервере.
-     * @param remotePath Путь на сервере
-     * @param recursive Рекурсивный обход (по умолчанию false)
-     * @param excludePatterns Массив glob-паттернов для исключения
+     * Returns a list of files and directories at the given path on the server.
+     * @param remotePath Path on the server
+     * @param recursive Recursive traversal (default false)
+     * @param excludePatterns Array of glob patterns to exclude
      */
     public async listRemoteFiles(
         remotePath: string,
@@ -88,7 +88,7 @@ export class SSHClient {
     }
 
     /**
-     * Читает содержимое директории на удалённом сервере.
+     * Reads the contents of a directory on the remote server.
      */
     private async readRemoteDirectory(remotePath: string): Promise<SSHFileInfo[]> {
         return new Promise((resolve, reject) => {
@@ -109,7 +109,7 @@ export class SSHClient {
     }
 
     /**
-     * Фильтрует записи на основе exclude-паттернов.
+     * Filters entries based on exclude patterns.
      */
     private filterEntriesByPatterns(
         entries: SSHFileInfo[],
@@ -123,7 +123,7 @@ export class SSHClient {
     }
 
     /**
-     * Рекурсивно собирает файлы из директорий.
+     * Recursively collects files from directories.
      */
     private async collectFilesRecursively(
         entries: SSHFileInfo[],
@@ -140,7 +140,7 @@ export class SSHClient {
     }
 
     /**
-     * Удаляет файл на сервере.
+     * Deletes a file on the server.
      */
     public async deleteRemoteFile(remoteFilePath: string): Promise<void> {
         this.ensureSftpSession();
@@ -160,7 +160,7 @@ export class SSHClient {
     }
 
     /**
-     * Рекурсивно удаляет директорию на сервере.
+     * Recursively deletes a directory on the server.
      */
     public async deleteRemoteDirectory(remoteDirectoryPath: string): Promise<void> {
         this.ensureSftpSession();
@@ -185,7 +185,7 @@ export class SSHClient {
     }
 
     /**
-     * Загружает локальный файл на сервер с сохранением времени модификации.
+     * Uploads a local file to the server, preserving the modification time.
      */
     public async uploadFile(
         localFilePath: string,
@@ -221,8 +221,8 @@ export class SSHClient {
     }
 
     /**
-     * Получает информацию о файле на сервере (время модификации и размер).
-     * Возвращает null если файл не существует.
+     * Gets file info on the server (modification time and size).
+     * Returns null if the file does not exist.
      */
     public async getRemoteFileStat(remotePath: string): Promise<{ mtime: Date; size: number } | null> {
         this.ensureSftpSession();
@@ -241,9 +241,9 @@ export class SSHClient {
     }
 
     /**
-     * Загружает файлы из локальной папки на сервер через SFTP.
-     * Загружает только файлы, которые отсутствуют на сервере или были изменены.
-     * Сохраняет время модификации файлов для оптимизации последующих деплоев.
+     * Uploads files from a local folder to the server via SFTP.
+     * Uploads only files that are missing on the server or have been modified.
+     * Preserves file modification times to optimize subsequent deploys.
      */
     public async uploadFolderViaSFTP(
         localFolderPath: string,
@@ -293,7 +293,7 @@ export class SSHClient {
     }
 
     /**
-     * Рекурсивно собирает локальные файлы из директории.
+     * Recursively collects local files from a directory.
      */
     private async collectLocalFiles(basePath: string): Promise<Array<{ absolutePath: string; relativePath: string }>> {
         const files: Array<{ absolutePath: string; relativePath: string }> = [];
@@ -321,7 +321,7 @@ export class SSHClient {
     }
 
     /**
-     * Скачивает один файл с сервера, создавая локальные директории при необходимости.
+     * Downloads a single file from the server, creating local directories as needed.
      */
     public async downloadFile(remoteFilePath: string, localFilePath: string): Promise<void> {
         this.ensureSftpSession();
@@ -335,9 +335,9 @@ export class SSHClient {
     }
 
     /**
-     * Рекурсивно скачивает удалённую папку в локальную директорию через SFTP.
-     * Зеркальная операция к uploadFolderViaSFTP — используется для обратной синхронизации.
-     * @param skipDirs Имена директорий, которые нужно пропустить (vcs, зависимости и т.п.)
+     * Recursively downloads a remote folder into a local directory via SFTP.
+     * Mirror operation of uploadFolderViaSFTP — used for back sync.
+     * @param skipDirs Directory names to skip (vcs, dependencies, etc.)
      */
     public async downloadFolderViaSFTP(
         remoteFolderPath: string,
@@ -347,7 +347,7 @@ export class SSHClient {
         this.ensureSftpSession();
         const skip = new Set(skipDirs);
 
-        // Сначала собираем полный список файлов (без директорий)
+        // First collect the full file list (without directories)
         const files: Array<{ remote: string; local: string }> = [];
         const collect = async (remoteDir: string, localDir: string): Promise<void> => {
             const entries = await this.readRemoteDirectory(remoteDir);
@@ -379,7 +379,7 @@ export class SSHClient {
     }
 
     /**
-     * Проверяет наличие команды unzip на сервере.
+     * Checks whether the unzip command is available on the server.
      */
     public async checkUnzipAvailable(): Promise<boolean> {
         try {
@@ -391,7 +391,7 @@ export class SSHClient {
     }
 
     /**
-     * Выполняет команду на удалённом сервере.
+     * Executes a command on the remote server.
      */
     public async executeCommand(command: string): Promise<string> {
         return new Promise((resolve, reject) => {
@@ -420,7 +420,7 @@ export class SSHClient {
     }
 
     /**
-     * Загружает локальную папку на сервер в виде ZIP-архива, затем извлекает её и удаляет архив.
+     * Uploads a local folder to the server as a ZIP archive, then extracts and deletes the archive.
      */
     public async uploadFolderAsZip(
         localFolderPath: string,
@@ -434,7 +434,7 @@ export class SSHClient {
 
         try {
             await this.ensureRemoteDirectoryExists(remoteFolderPath, "");
-            // Создание ZIP-архива
+            // Create ZIP archive
             await new Promise<void>((resolve, reject) => {
                 const output = fs.createWriteStream(localZipPath);
                 const archive = archiver("zip", { zlib: { level: 9 } });
@@ -446,11 +446,11 @@ export class SSHClient {
                 archive.directory(localFolderPath, false);
                 archive.finalize();
             });
-            // Загрузка архива на сервер
+            // Upload archive to server
             await this.uploadFile(localZipPath, remoteZipPath);
-            // Извлечение архива на сервере
+            // Extract archive on server
             await this.executeCommand(`unzip -o "${remoteZipPath}" -d "${remoteFolderPath}"`);
-            // Удаление ZIP-файла с сервера
+            // Delete ZIP file from server
             await this.deleteRemoteFile(remoteZipPath);
         } finally {
             if (fs.existsSync(localZipPath)) {
@@ -460,7 +460,7 @@ export class SSHClient {
     }
 
     /**
-     * Проверяет, установлена ли SFTP-сессия.
+     * Checks whether the SFTP session is established.
      */
     private ensureSftpSession(): void {
         if (!this.sftp) {
@@ -469,7 +469,7 @@ export class SSHClient {
     }
 
     /**
-     * Проверяет существование удалённого пути.
+     * Checks whether the remote path exists.
      */
     private async remotePathExists(remotePath: string): Promise<boolean> {
         return new Promise((resolve) => {
@@ -481,7 +481,7 @@ export class SSHClient {
     }
 
     /**
-     * Определяет, является ли переданный объект директорией.
+     * Determines whether the given object is a directory.
      */
     private isDirectory(entry: SSHFileInfo): boolean {
         if (typeof entry.attrs.isDirectory === "function") {
@@ -494,7 +494,7 @@ export class SSHClient {
     }
 
     /**
-     * Обеспечивает существование удалённой директории, создавая недостающие сегменты пути.
+     * Ensures the remote directory exists, creating missing path segments.
      */
     private async ensureRemoteDirectoryExists(remoteDirPath: string, remoteBasePath: string): Promise<void> {
         const normalizedDirPath = normalizePath(remoteDirPath);
@@ -518,7 +518,7 @@ export class SSHClient {
     }
 
     /**
-     * Создает директорию на удалённом сервере.
+     * Creates a directory on the remote server.
      */
     private async createRemoteDirectory(dirPath: string): Promise<void> {
         return new Promise((resolve, reject) => {

@@ -11,11 +11,11 @@ export interface FileInfo {
 
 export class FileCollector {
     /**
-     * Рекурсивно обходит директорию basePath, собирает файлы за исключением тех,
-     * чей нормализованный относительный путь соответствует одному из шаблонов в excludePatterns.
-     * @param basePath Путь к корневой директории
-     * @param excludePatterns Массив glob-паттернов для исключения файлов/папок
-     * @returns Массив объектов FileInfo с информацией о найденных файлах
+     * Recursively traverses the basePath directory, collecting files except those
+     * whose normalized relative path matches one of the excludePatterns.
+     * @param basePath Path to the root directory
+     * @param excludePatterns Array of glob patterns to exclude files/folders
+     * @returns Array of FileInfo objects with information about found files
      */
     public static async collectFiles(
         basePath: string,
@@ -23,15 +23,15 @@ export class FileCollector {
     ): Promise<FileInfo[]> {
         const files: FileInfo[] = [];
 
-        // Преобразуем basePath в абсолютный путь относительно process.cwd()
+        // Convert basePath to absolute path relative to process.cwd()
         const absoluteBasePath = path.resolve(basePath);
 
-        // Рекурсивная функция обхода
+        // Recursive traversal function
         const traverse = async (currentPath: string): Promise<void> => {
             const entries = await fs.readdir(currentPath, { withFileTypes: true });
             for (const entry of entries) {
                 const entryAbsolutePath = path.join(currentPath, entry.name);
-                // Вычисляем относительный путь относительно absoluteBasePath
+                // Calculate relative path from absoluteBasePath
                 const entryRelativePath = normalizePath(
                     path.relative(absoluteBasePath, entryAbsolutePath)
                 );
@@ -58,10 +58,10 @@ export class FileCollector {
     }
 
     /**
-     * Копирует файлы из массива FileInfo в указанную директорию outputPath,
-     * сохраняя исходную структуру папок и время последнего изменения.
-     * @param files Массив объектов FileInfo, полученный из collectFiles
-     * @param outputPath Путь к директории, куда будут скопированы файлы
+     * Copies files from the FileInfo array to the specified outputPath directory,
+     * preserving the original folder structure and modification time.
+     * @param files Array of FileInfo objects from collectFiles
+     * @param outputPath Path to the directory where files will be copied
      */
     public static async copyFilesToOutput(
         files: FileInfo[],
@@ -69,19 +69,19 @@ export class FileCollector {
     ): Promise<void> {
         for (const file of files) {
             const targetPath = path.join(outputPath, file.relativePath);
-            // Создаем необходимые директории
+            // Create required directories
             await fs.mkdir(path.dirname(targetPath), { recursive: true });
             await fs.copyFile(file.absolutePath, targetPath);
-            // Устанавливаем время последнего изменения, равное оригинальному
+            // Set modification time to match the original
             await fs.utimes(targetPath, new Date(), file.updateTime);
         }
     }
 
     /**
-     * Проверяет, соответствует ли нормализованный относительный путь файлу одному из исключающих паттернов.
-     * @param filePath Нормализованный относительный путь файла или директории
-     * @param excludePatterns Массив glob-паттернов для исключения
-     * @returns true, если файл должен быть исключен, иначе false
+     * Checks whether the normalized relative file path matches any of the exclude patterns.
+     * @param filePath Normalized relative path of the file or directory
+     * @param excludePatterns Array of glob patterns for exclusion
+     * @returns true if the file should be excluded, otherwise false
      */
     private static shouldExclude(filePath: string, excludePatterns: string[]): boolean {
         return excludePatterns.some(pattern => minimatch(filePath, pattern, { dot: true }));

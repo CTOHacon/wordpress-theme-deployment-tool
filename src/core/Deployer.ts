@@ -21,16 +21,16 @@ export interface SyncResult {
 
 export class Deployer {
     /**
-     * Синхронизирует локальную сборку с удалённой директорией.
-     * Выполняет удаление устаревших файлов, деплой через ZIP и последующий запуск дополнительных команд.
+     * Syncs the local build to the remote directory.
+     * Deletes stale files, deploys via ZIP, then runs additional commands.
      *
-     * @param sshClient Активный экземпляр SSHClient
-     * @param localFiles Массив локальных файлов, полученных через FileCollector
-     * @param remoteFiles Массив файлов, полученных с сервера через SSHClient
-     * @param remoteThemePath Корневой путь темы на сервере
-     * @param excludePatterns Массив glob-паттернов для исключения файлов/папок
-     * @param config Основная конфигурация из config.json
-     * @returns Статистика выполненных операций
+     * @param sshClient Active SSHClient instance
+     * @param localFiles Array of local files from FileCollector
+     * @param remoteFiles Array of files from the server via SSHClient
+     * @param remoteThemePath Root theme path on the server
+     * @param excludePatterns Array of glob patterns to exclude files/folders
+     * @param config Main configuration from config.json
+     * @returns Statistics of completed operations
      */
     public static async syncToRemote(
         sshClient: SSHClient,
@@ -45,19 +45,19 @@ export class Deployer {
         const localFileMap = this.createLocalFileMap(localFiles);
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
-        // Проверяем доступность unzip на сервере и выбираем метод деплоя
-        Logger.info("Проверка доступности команды unzip на сервере...");
+        // Check unzip availability on server and choose deploy method
+        Logger.info("Checking unzip command availability on server...");
         const hasUnzip = await sshClient.checkUnzipAvailable();
 
         if (hasUnzip) {
-            Logger.success("Команда unzip доступна, используется ZIP-метод деплоя");
+            Logger.success("unzip command available, using ZIP deploy method");
             await this.deployUsingZip(sshClient, ".output", remoteThemePath);
         } else {
-            Logger.warn("Команда unzip недоступна, используется прямая загрузка через SFTP");
+            Logger.warn("unzip command unavailable, using direct SFTP upload");
             await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
         }
 
-        // Удаляем файлы, которых нет в локальной сборке
+        // Delete files not present in the local build
         await this.deleteUnneededRemoteFiles(
             sshClient,
             remoteFileMap,
@@ -67,11 +67,11 @@ export class Deployer {
             result
         );
 
-        // Выполнение дополнительных команд (например, установка Composer)
+        // Run additional commands (e.g. Composer install)
         const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
         if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
             const cmd = deploymentConfig.steps.composerInstall.replace("{remote_theme_path}", remoteThemePath);
-            Logger.info(`Выполняется команда деплоя: ${cmd}`);
+            Logger.info(`Running deploy command: ${cmd}`);
             await sshClient.executeCommand(cmd);
         }
 
@@ -134,7 +134,7 @@ export class Deployer {
         if (localMap.has(relativePath)) {
             return true;
         }
-        // Если это директория (нет расширения), проверяем, существует ли внутри хоть какой-либо файл
+        // If directory (no extension), check if any file exists inside
         if (!path.extname(relativePath)) {
             for (const key of localMap.keys()) {
                 if (key.startsWith(relativePath + '/')) {
@@ -180,27 +180,27 @@ export class Deployer {
     }
 
     /**
-     * Деплой сборки через ZIP-архив (быстрее для больших объёмов файлов).
-     * Создаёт ZIP-архив, загружает его на сервер, распаковывает и удаляет.
+     * Deploy build via ZIP archive (faster for large file sets).
+     * Creates a ZIP archive, uploads it to the server, extracts and deletes it.
      */
     private static async deployUsingZip(sshClient: SSHClient, localFolderPath: string, remoteDestPath: string): Promise<void> {
-        Logger.info("Запуск деплоя через ZIP-архив...");
+        Logger.info("Starting ZIP deploy...");
         await sshClient.uploadFolderAsZip(localFolderPath, remoteDestPath);
-        Logger.log(Operation.UPLOAD, "Деплой через ZIP завершён успешно");
+        Logger.log(Operation.UPLOAD, "ZIP deploy completed successfully");
     }
 
     /**
-     * Деплой сборки напрямую через SFTP (без использования ZIP и shell-команд).
-     * Загружает только изменённые или новые файлы.
+     * Deploy build directly via SFTP (without ZIP or shell commands).
+     * Uploads only changed or new files.
      */
     private static async deployUsingSFTP(sshClient: SSHClient, localFolderPath: string, remoteDestPath: string): Promise<void> {
-        Logger.info("Запуск деплоя через SFTP (прямая загрузка файлов)...");
+        Logger.info("Starting SFTP deploy (direct file upload)...");
         const result = await sshClient.uploadFolderViaSFTP(localFolderPath, remoteDestPath);
-        Logger.log(Operation.UPLOAD, `Деплой через SFTP завершён: ${result.uploaded} загружено, ${result.skipped} пропущено (без изменений)`);
+        Logger.log(Operation.UPLOAD, `SFTP deploy complete: ${result.uploaded} uploaded, ${result.skipped} skipped (unchanged)`);
     }
 
     /**
-     * Определяет, является ли переданный объект директорией.
+     * Determines whether the given object is a directory.
      */
     private static isDirectory(remoteFile: SSHFileInfo): boolean {
         if (typeof remoteFile.attrs.isDirectory === "function") {

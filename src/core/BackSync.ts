@@ -10,19 +10,19 @@ export interface BackSyncResult {
 }
 
 /**
- * Обратная синхронизация (backward sync): скачивает тему с сервера в локальную
- * staging-директорию для сравнения с локальным исходником и переноса правок,
- * сделанных клиентом напрямую на сервере (включая собранные build-файлы).
+ * Back sync: downloads the theme from the server into a local staging directory
+ * for comparison with the local source and for merging changes made directly
+ * on the server (including compiled build files).
  *
- * В отличие от деплоя НЕ использует config.exclude (он исключает scss/ts/md,
- * которые при обратной синхронизации как раз и нужны). Пропускаются только
- * vcs/зависимости/служебные директории из SKIP_DIRS.
+ * Unlike deploy, does NOT use config.exclude (which excludes scss/ts/md files
+ * that are needed for back sync). Only vcs/dependency/service directories
+ * from SKIP_DIRS are skipped.
  */
 export class BackSync {
-    /** Директории, которые никогда не скачиваются с сервера. */
+    /** Directories that are never downloaded from the server. */
     public static readonly SKIP_DIRS = [".git", "node_modules", "vendor", ".deployment"];
 
-    /** Директория, в которую складывается скачанная с сервера тема. */
+    /** Directory where the downloaded theme from the server is stored. */
     public static readonly DEFAULT_STAGING_DIR = ".backsync";
 
     public static async pullFromRemote(
@@ -30,9 +30,9 @@ export class BackSync {
         config: Config,
         stagingDir: string = BackSync.DEFAULT_STAGING_DIR
     ): Promise<BackSyncResult> {
-        Logger.log("SYNC", `Обратная синхронизация: ${config.remote_theme_path} -> ${stagingDir}`);
+        Logger.log("SYNC", `Back sync: ${config.remote_theme_path} -> ${stagingDir}`);
 
-        // Чистим staging-директорию перед скачиванием
+        // Clean staging directory before downloading
         await rm(stagingDir, { recursive: true, force: true });
         await mkdir(stagingDir, { recursive: true });
 
@@ -42,8 +42,8 @@ export class BackSync {
             BackSync.SKIP_DIRS
         );
 
-        Logger.success(`Обратная синхронизация завершена: скачано ${downloaded}/${total} файлов -> ${stagingDir}`);
-        Logger.info(`Сравните со своим исходником, напр.: diff -rq ${config.local_theme_path} ${stagingDir}`);
+        Logger.success(`Back sync complete: downloaded ${downloaded}/${total} files -> ${stagingDir}`);
+        Logger.info(`Compare with your source, e.g.: diff -rq ${config.local_theme_path} ${stagingDir}`);
 
         return { downloaded, total, stagingDir };
     }

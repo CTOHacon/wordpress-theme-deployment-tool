@@ -1,17 +1,17 @@
 import type { DeploymentConfig as BaseDeploymentConfig, Config } from "./ConfigService";
 
-// Расширяем базовый интерфейс, чтобы при необходимости добавить дополнительные свойства
+// Extend the base interface to allow adding additional properties if needed
 export interface DeploymentConfig extends BaseDeploymentConfig { }
 
 /**
- * Сервис для работы с конфигурацией команд деплоя.
- * Объединяет значения из config.json с набором значений по умолчанию.
+ * Service for working with deploy command configuration.
+ * Merges values from config.json with a set of default values.
  */
 export class DeploymentConfigService {
     /**
-     * Возвращает итоговую конфигурацию для деплоя, объединяя дефолтные значения с данными из config.json
-     * @param config Основная конфигурация, загруженная через ConfigService
-     * @returns Объект конфигурации деплоя
+     * Returns the final deploy configuration, merging defaults with data from config.json.
+     * @param config Main configuration loaded via ConfigService
+     * @returns Deploy configuration object
      */
     public static getDeploymentConfig(config: Config): DeploymentConfig {
         return {
