@@ -43,8 +43,8 @@ async function main(args: {
             Logger.warn(`Error removing ${outputDir}: ${error}`);
         }
         await mkdir(outputDir, { recursive: true });
-        await FileCollector.copyFilesToOutput(localFiles, outputDir);
-        Logger.info(`Files copied to ${outputDir}`);
+        // Deployer.syncToRemote fills the output dir — with changed files only
+        // (incremental deploy), so a full copy here is no longer needed.
 
         // 4. Establish SSH connection
         const sshClient = new SSHClient();

@@ -7,6 +7,7 @@ export interface FileInfo {
     absolutePath: string;
     relativePath: string;
     updateTime: Date;
+    size: number;
 }
 
 export class FileCollector {
@@ -48,6 +49,7 @@ export class FileCollector {
                         absolutePath: entryAbsolutePath,
                         relativePath: entryRelativePath,
                         updateTime: stats.mtime,
+                        size: stats.size,
                     });
                 }
             }
@@ -67,13 +69,18 @@ export class FileCollector {
         files: FileInfo[],
         outputPath: string
     ): Promise<void> {
-        for (const file of files) {
-            const targetPath = path.join(outputPath, file.relativePath);
-            // Create required directories
-            await fs.mkdir(path.dirname(targetPath), { recursive: true });
-            await fs.copyFile(file.absolutePath, targetPath);
-            // Set modification time to match the original
-            await fs.utimes(targetPath, new Date(), file.updateTime);
+        // Copy files in batches with bounded concurrency (faster than strictly serial).
+        const CONCURRENCY = 16;
+        for (let i = 0; i < files.length; i += CONCURRENCY) {
+            const batch = files.slice(i, i + CONCURRENCY);
+            await Promise.all(batch.map(async (file) => {
+                const targetPath = path.join(outputPath, file.relativePath);
+                // Create required directories
+                await fs.mkdir(path.dirname(targetPath), { recursive: true });
+                await fs.copyFile(file.absolutePath, targetPath);
+                // Set modification time to match the original
+                await fs.utimes(targetPath, new Date(), file.updateTime);
+            }));
         }
     }
 

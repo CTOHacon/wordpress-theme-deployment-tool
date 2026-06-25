@@ -78,13 +78,91 @@ export class SSHClient {
         excludePatterns: string[] = []
     ): Promise<SSHFileInfo[]> {
         this.ensureSftpSession();
-        let entries = await this.readRemoteDirectory(remotePath);
-        entries = this.filterEntriesByPatterns(entries, excludePatterns);
 
         if (!recursive) {
-            return entries;
+            const entries = await this.readRemoteDirectory(remotePath);
+            return this.filterEntriesByPatterns(entries, excludePatterns);
         }
-        return await this.collectFilesRecursively(entries, excludePatterns);
+
+        // Recursive listing via a single `find` command = one network round-trip.
+        // The SFTP-walk fallback does one readdir per directory — hundreds of
+        // serial round-trips, each paying full latency (the source of long hangs).
+        try {
+            const entries = await this.listRemoteFilesViaFind(remotePath);
+            return this.filterRecursiveEntries(entries, excludePatterns);
+        } catch (error) {
+            let entries = await this.readRemoteDirectory(remotePath);
+            entries = this.filterEntriesByPatterns(entries, excludePatterns);
+            return await this.collectFilesRecursively(entries, excludePatterns);
+        }
+    }
+
+    /**
+     * Recursively lists files on the server with a single `find` command
+     * (GNU find, `-printf`). Returns a flat list of entries.
+     */
+    private async listRemoteFilesViaFind(remotePath: string): Promise<SSHFileInfo[]> {
+        const normalizedRoot = normalizePath(remotePath);
+        const output = await this.executeCommand(
+            `find "${normalizedRoot}" -mindepth 1 -printf '%y\\t%s\\t%T@\\t%p\\n'`
+        );
+
+        const entries: SSHFileInfo[] = [];
+        for (const line of output.split("\n")) {
+            if (!line) continue;
+            const tab1 = line.indexOf("\t");
+            const tab2 = line.indexOf("\t", tab1 + 1);
+            const tab3 = line.indexOf("\t", tab2 + 1);
+            if (tab1 < 0 || tab2 < 0 || tab3 < 0) continue;
+
+            const type = line.slice(0, tab1);
+            const size = parseInt(line.slice(tab1 + 1, tab2), 10) || 0;
+            const mtime = Math.floor(parseFloat(line.slice(tab2 + 1, tab3)) || 0);
+            const fullPath = normalizePath(line.slice(tab3 + 1));
+            const isDir = type === "d";
+
+            entries.push({
+                filename: path.basename(fullPath),
+                fullPath,
+                attrs: {
+                    mode: 0,
+                    uid: 0,
+                    gid: 0,
+                    size,
+                    atime: mtime,
+                    mtime,
+                    isDirectory: () => isDir,
+                    isFile: () => type === "f",
+                },
+                time: new Date(mtime * 1000),
+            });
+        }
+        return entries;
+    }
+
+    /**
+     * Filters the flat recursive list: an excluded directory takes its whole
+     * subtree with it — just as the old walk did not descend into excluded folders.
+     */
+    private filterRecursiveEntries(
+        entries: SSHFileInfo[],
+        excludePatterns: string[]
+    ): SSHFileInfo[] {
+        if (excludePatterns.length === 0) return entries;
+
+        const isExcluded = (entry: SSHFileInfo): boolean =>
+            excludePatterns.some((pattern) =>
+                minimatch(entry.fullPath, pattern) || minimatch(entry.filename, pattern)
+            );
+
+        const excludedDirPrefixes = entries
+            .filter((entry) => this.isDirectory(entry) && isExcluded(entry))
+            .map((entry) => entry.fullPath + "/");
+
+        return entries.filter((entry) => {
+            if (isExcluded(entry)) return false;
+            return !excludedDirPrefixes.some((prefix) => entry.fullPath.startsWith(prefix));
+        });
     }
 
     /**

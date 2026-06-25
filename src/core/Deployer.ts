@@ -1,10 +1,16 @@
 import type { SSHFileInfo, SSHClient } from "./SSHClient";
 import type { FileInfo } from "./FileCollector";
+import { FileCollector } from "./FileCollector";
 import path from "path";
 import { minimatch } from "minimatch";
+import { normalizePath } from "../utils/PathUtils";
 import { DeploymentConfigService } from "../config/DeploymentConfig";
 import type { Config } from "../config/ConfigService";
 import Logger from "../utils/Logger";
+
+// Modification-time tolerance (sec): unzip restores mtime with DOS-time precision (2s),
+// so without tolerance some files would look "newer" and be re-uploaded on every deploy.
+const MTIME_TOLERANCE_SECONDS = 2;
 
 enum Operation {
     UPLOAD = "UPLOAD",
@@ -45,16 +51,29 @@ export class Deployer {
         const localFileMap = this.createLocalFileMap(localFiles);
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
-        // Check unzip availability on server and choose deploy method
-        Logger.info("Checking unzip command availability on server...");
-        const hasUnzip = await sshClient.checkUnzipAvailable();
+        // Incremental deploy: upload only new/changed files.
+        // Compared by size and modification time against what is already on the server.
+        const changedFiles = this.selectChangedFiles(localFiles, remoteFileMap, remoteThemePath);
+        Logger.info(`To upload: ${changedFiles.length} of ${localFiles.length} files (new/changed)`);
 
-        if (hasUnzip) {
-            Logger.success("unzip command available, using ZIP deploy method");
-            await this.deployUsingZip(sshClient, ".output", remoteThemePath);
+        if (changedFiles.length > 0) {
+            // Build the output dir from changed files only
+            await FileCollector.copyFilesToOutput(changedFiles, ".output");
+            result.added = changedFiles.length;
+
+            // Check unzip availability on server and choose deploy method
+            Logger.info("Checking unzip command availability on server...");
+            const hasUnzip = await sshClient.checkUnzipAvailable();
+
+            if (hasUnzip) {
+                Logger.success("unzip command available, using ZIP deploy method");
+                await this.deployUsingZip(sshClient, ".output", remoteThemePath);
+            } else {
+                Logger.warn("unzip command unavailable, using direct SFTP upload");
+                await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
+            }
         } else {
-            Logger.warn("unzip command unavailable, using direct SFTP upload");
-            await this.deployUsingSFTP(sshClient, ".output", remoteThemePath);
+            Logger.info("No changed files — upload skipped");
         }
 
         // Delete files not present in the local build
@@ -76,6 +95,32 @@ export class Deployer {
         }
 
         return result;
+    }
+
+    /**
+     * Selects local files that need uploading: missing on the server,
+     * differing in size, or locally newer (within MTIME_TOLERANCE_SECONDS).
+     * If there is no server data (e.g. --skip-compair) — all are treated as changed.
+     */
+    private static selectChangedFiles(
+        localFiles: FileInfo[],
+        remoteFileMap: Map<string, SSHFileInfo>,
+        remoteThemePath: string
+    ): FileInfo[] {
+        const normalizedBase = normalizePath(remoteThemePath);
+        return localFiles.filter((file) => {
+            const remoteKey = normalizePath(path.join(normalizedBase, file.relativePath));
+            const remote = remoteFileMap.get(remoteKey);
+            if (!remote) {
+                return true;
+            }
+            if (remote.attrs.size !== file.size) {
+                return true;
+            }
+            const localSeconds = Math.floor(file.updateTime.getTime() / 1000);
+            const remoteSeconds = Math.floor(remote.attrs.mtime);
+            return localSeconds - remoteSeconds > MTIME_TOLERANCE_SECONDS;
+        });
     }
 
     private static createLocalFileMap(localFiles: FileInfo[]): Map<string, FileInfo> {
