@@ -4,6 +4,7 @@ import { SSHClient } from "./core/SSHClient";
 import { Deployer } from "./core/Deployer";
 import { BackSync } from "./core/BackSync";
 import { FileWatcher } from "./core/FileWatcher";
+import { createChangeDetection } from "./core/mtime";
 import Logger from "./utils/Logger";
 import { rm, mkdir } from "fs/promises";
 
@@ -11,6 +12,7 @@ async function main(args: {
     skipCompair?: boolean;
     syncMode?: boolean;
     pullMode?: boolean;
+    localTimes?: boolean;
 }) {
     try {
         // 1. Load configuration
@@ -51,10 +53,16 @@ async function main(args: {
         await sshClient.connect(config.ssh);
         Logger.info("SSH connection established");
 
-        // 5. Get file list from server
-        const remoteFiles = !args.skipCompair ? await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude) : [];
-        if (!args.skipCompair) {
+        // 5. Get file list from server — skipped when the change-detection
+        // strategy can derive both changes and deletions locally
+        const changeDetection = createChangeDetection(!!args.localTimes, config);
+        sshClient.setPreserveRemoteTimes(changeDetection.shouldPreserveRemoteMtimes());
+        const needsListing = !args.skipCompair && await changeDetection.needsRemoteListing();
+        const remoteFiles = needsListing ? await sshClient.listRemoteFiles(config.remote_theme_path, true, config.exclude) : [];
+        if (needsListing) {
             Logger.info(`Found ${remoteFiles.length} files on server`);
+        } else if (!args.skipCompair) {
+            Logger.info("Remote listing skipped — local snapshot covers changes and deletions");
         }
 
         // 6. Sync local build to server
@@ -64,7 +72,8 @@ async function main(args: {
             remoteFiles,
             config.remote_theme_path,
             config.exclude,
-            config
+            config,
+            changeDetection
         );
         Logger.success(
             `Sync complete: deleted ${syncResult.deleted}`
@@ -127,9 +136,11 @@ async function main(args: {
 const skipCompair = process.argv.includes("--skip-compair");
 const syncMode = process.argv.includes("--sync");
 const pullMode = process.argv.includes("--pull");
+const localTimes = process.argv.includes("--local-times");
 
 main({
     skipCompair,
     syncMode,
-    pullMode
+    pullMode,
+    localTimes
 });

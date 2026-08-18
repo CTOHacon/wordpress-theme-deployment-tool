@@ -26,9 +26,20 @@ export interface SSHFileInfo {
 export class SSHClient {
     private client: Client;
     private sftp: SFTPWrapper | null = null;
+    private preserveRemoteTimes: boolean = true;
 
     constructor() {
         this.client = new Client();
+    }
+
+    /**
+     * Controls whether uploads set the remote file's mtime after transfer.
+     * Disable when remote mtimes are not used for comparison (local snapshot
+     * mode) — saves a round-trip per file and avoids warnings on servers
+     * that reject setstat.
+     */
+    public setPreserveRemoteTimes(preserve: boolean): void {
+        this.preserveRemoteTimes = preserve;
     }
 
     /**
@@ -284,6 +295,8 @@ export class SSHClient {
             this.sftp!.fastPut(localFilePath, remoteFilePath, async (err) => {
                 if (err) {
                     reject(new Error(`Failed to upload file to ${remoteFilePath}: ${err.message}`));
+                } else if (!this.preserveRemoteTimes) {
+                    resolve();
                 } else {
                     // Preserve modification time on the remote file
                     this.sftp!.utimes(remoteFilePath, mtime, mtime, (utimesErr) => {

@@ -194,3 +194,6 @@ ssh_key
 ssh_passphrase
 
 .backsync
+.mtime-snapshot.json
+config.plugins.json
+config.theme.json

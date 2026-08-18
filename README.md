@@ -192,6 +192,39 @@ Deploy your theme once with:
 bun run deploy
 ```
 
+### Local Update Times (`--local-times`)
+
+By default, changed files are detected by comparing local modification times
+against the mtimes reported by the server. Some servers do not preserve (or do
+not allow setting) modification times on upload — remote mtimes then reflect
+upload time and the comparison becomes unreliable.
+
+The `--local-times` flag switches change detection to a local snapshot:
+
+```bash
+bun run deploy --local-times
+```
+
+- After each successful deploy, the current file tree (paths, mtimes, sizes)
+  is stored in `.mtime-snapshot.json` (gitignored, next to `config.json`).
+- The next deploy compares against that snapshot instead of remote mtimes,
+  and **skips the slow recursive remote file listing entirely** — both changed
+  files and deletions are derived from the snapshot. This is where the speed
+  win comes from.
+- Uploads also skip setting the remote file's mtime (`sftp utimes`) — remote
+  times aren't used for comparison in this mode, and some servers (e.g.
+  WP Engine) reject setstat with "Could not set mtime" warnings.
+- Trade-off: changes made on the server by someone else are invisible to the
+  snapshot. Run a plain `bun run deploy` occasionally to reconcile drift.
+- Snapshots are keyed per deploy target (`ssh.host` + `remote_theme_path`),
+  so swapping `config.json` between targets is safe.
+- The first run for a target (no snapshot yet) falls back to the remote
+  comparison for that run, then records the snapshot.
+- A failed deploy never updates the snapshot.
+
+Also works with `bun run sync --local-times` (applies to the initial full
+sync; the watcher itself tracks changes by content hash).
+
 ### SYNC Mode - Continuous File Watching
 
 For active development, use SYNC mode to automatically sync file changes to the server:

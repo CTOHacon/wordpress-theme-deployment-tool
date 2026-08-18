@@ -6,11 +6,8 @@ import { minimatch } from "minimatch";
 import { normalizePath } from "../utils/PathUtils";
 import { DeploymentConfigService } from "../config/DeploymentConfig";
 import type { Config } from "../config/ConfigService";
+import type { ChangeDetectionStrategy } from "./mtime";
 import Logger from "../utils/Logger";
-
-// Modification-time tolerance (sec): unzip restores mtime with DOS-time precision (2s),
-// so without tolerance some files would look "newer" and be re-uploaded on every deploy.
-const MTIME_TOLERANCE_SECONDS = 2;
 
 enum Operation {
     UPLOAD = "UPLOAD",
@@ -36,6 +33,7 @@ export class Deployer {
      * @param remoteThemePath Root theme path on the server
      * @param excludePatterns Array of glob patterns to exclude files/folders
      * @param config Main configuration from config.json
+     * @param changeDetection Strategy deciding which files count as changed
      * @returns Statistics of completed operations
      */
     public static async syncToRemote(
@@ -44,7 +42,8 @@ export class Deployer {
         remoteFiles: SSHFileInfo[],
         remoteThemePath: string,
         excludePatterns: string[],
-        config: Config
+        config: Config,
+        changeDetection: ChangeDetectionStrategy
     ): Promise<SyncResult> {
         const result: SyncResult = { added: 0, updated: 0, deleted: 0 };
 
@@ -52,8 +51,7 @@ export class Deployer {
         const remoteFileMap = this.createRemoteFileMap(remoteFiles);
 
         // Incremental deploy: upload only new/changed files.
-        // Compared by size and modification time against what is already on the server.
-        const changedFiles = this.selectChangedFiles(localFiles, remoteFileMap, remoteThemePath);
+        const changedFiles = await changeDetection.selectChangedFiles(localFiles, remoteFileMap, remoteThemePath);
         Logger.info(`To upload: ${changedFiles.length} of ${localFiles.length} files (new/changed)`);
 
         if (changedFiles.length > 0) {
@@ -76,7 +74,7 @@ export class Deployer {
             Logger.info("No changed files — upload skipped");
         }
 
-        // Delete files not present in the local build
+        // Delete files not present in the local build (remote-listing driven)
         await this.deleteUnneededRemoteFiles(
             sshClient,
             remoteFileMap,
@@ -86,6 +84,10 @@ export class Deployer {
             result
         );
 
+        // Delete files the strategy knows are gone locally (snapshot driven,
+        // used when the remote listing was skipped)
+        await this.deleteStalePathsFromStrategy(sshClient, changeDetection, localFiles, remoteThemePath, result);
+
         // Run additional commands (e.g. Composer install)
         const deploymentConfig = DeploymentConfigService.getDeploymentConfig(config);
         if (deploymentConfig.steps && deploymentConfig.steps.composerInstall) {
@@ -94,33 +96,11 @@ export class Deployer {
             await sshClient.executeCommand(cmd);
         }
 
-        return result;
-    }
+        // Deploy fully succeeded — let the strategy persist its state
+        // (local-snapshot mode records current update times; remote mode no-ops).
+        await changeDetection.commit(localFiles);
 
-    /**
-     * Selects local files that need uploading: missing on the server,
-     * differing in size, or locally newer (within MTIME_TOLERANCE_SECONDS).
-     * If there is no server data (e.g. --skip-compair) — all are treated as changed.
-     */
-    private static selectChangedFiles(
-        localFiles: FileInfo[],
-        remoteFileMap: Map<string, SSHFileInfo>,
-        remoteThemePath: string
-    ): FileInfo[] {
-        const normalizedBase = normalizePath(remoteThemePath);
-        return localFiles.filter((file) => {
-            const remoteKey = normalizePath(path.join(normalizedBase, file.relativePath));
-            const remote = remoteFileMap.get(remoteKey);
-            if (!remote) {
-                return true;
-            }
-            if (remote.attrs.size !== file.size) {
-                return true;
-            }
-            const localSeconds = Math.floor(file.updateTime.getTime() / 1000);
-            const remoteSeconds = Math.floor(remote.attrs.mtime);
-            return localSeconds - remoteSeconds > MTIME_TOLERANCE_SECONDS;
-        });
+        return result;
     }
 
     private static createLocalFileMap(localFiles: FileInfo[]): Map<string, FileInfo> {
@@ -137,6 +117,32 @@ export class Deployer {
             map.set(file.fullPath, file);
         }
         return map;
+    }
+
+    /**
+     * Deletes files reported as gone by the change-detection strategy
+     * (e.g. present in the local snapshot but missing locally). A failed
+     * deletion leaves an orphan on the server until the next
+     * remote-listing-driven run reconciles it.
+     */
+    private static async deleteStalePathsFromStrategy(
+        sshClient: SSHClient,
+        changeDetection: ChangeDetectionStrategy,
+        localFiles: FileInfo[],
+        remoteThemePath: string,
+        result: SyncResult
+    ): Promise<void> {
+        const stalePaths = await changeDetection.selectDeletedPaths(localFiles);
+        for (const relativePath of stalePaths) {
+            const remotePath = normalizePath(path.join(remoteThemePath, relativePath));
+            try {
+                await sshClient.deleteRemoteFile(remotePath);
+                Logger.log(Operation.DELETE, "/" + relativePath);
+                result.deleted++;
+            } catch (error) {
+                Logger.log(Operation.ERROR, `${relativePath}: ${error}`);
+            }
+        }
     }
 
     private static async deleteUnneededRemoteFiles(
