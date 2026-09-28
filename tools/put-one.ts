@@ -1,10 +1,9 @@
 import { Client } from 'ssh2';
-import { readFileSync } from 'fs';
 
-const cfg = JSON.parse(readFileSync(new URL('./config.json', import.meta.url), 'utf8'));
+import { connectOptions } from './config';
 const [localPath, remotePath] = process.argv.slice(2);
 if (!localPath || !remotePath) {
-	console.error('usage: bun run put-one.ts <local> <remote>');
+	console.error('usage: bun run tools/put-one.ts <local> <remote>');
 	process.exit(1);
 }
 
@@ -49,4 +48,4 @@ conn.on('error', e => {
 	process.exit(1);
 });
 
-conn.connect(cfg.ssh);
+conn.connect(connectOptions());

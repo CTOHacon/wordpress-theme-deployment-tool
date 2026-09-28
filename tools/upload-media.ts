@@ -1,12 +1,12 @@
 // Standalone recursive uploader: local wp-content/uploads -> remote /wp-content/uploads
 // Skips files that already exist remotely with the same size. Sequential fastPut.
 import { Client } from "ssh2";
-import config from "./config.theme.json";
+import { connectOptions, remoteWpRoot } from "./config";
 import fs from "fs";
 import path from "path";
 
 const LOCAL_ROOT = path.resolve(import.meta.dir, "../../../uploads");
-const REMOTE_ROOT = "/wp-content/uploads";
+const REMOTE_ROOT = `${remoteWpRoot}/wp-content/uploads`;
 
 function collect(dir: string): string[] {
     const out: string[] = [];
@@ -69,10 +69,4 @@ c.on("ready", () => {
         process.exit(failed > 0 ? 1 : 0);
     });
 }).on("error", e => { console.error("Connection error:", e.message); process.exit(1); })
-.connect({
-    host: config.ssh.host,
-    port: config.ssh.port,
-    username: config.ssh.username,
-    password: config.ssh.password,
-    keepaliveInterval: 10000
-});
+.connect(connectOptions());

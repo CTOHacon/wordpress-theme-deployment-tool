@@ -1,6 +1,41 @@
 # WordPress Theme Deployment Tool
 
-A TypeScript-based deployment tool for WordPress themes that uses SSH/SFTP to sync files from your local environment to a remote server.
+Deploys a WordPress theme from your local environment to a remote server over SSH, and gives you a WP-CLI gateway to the same server. One `config.json` drives everything.
+
+| What | Command | Transport |
+|---|---|---|
+| Deploy (incremental, ZIP for large sets) | `bun run deploy` | SFTP (ssh2) |
+| Watch & sync while developing | `bun run sync` | SFTP (ssh2) |
+| Pull the server's theme into `.backsync/` | `bun run pull` | SFTP (ssh2) |
+| Deploy via rsync — dry run / apply | `bun run deploy:rsync:dry` / `bun run deploy:rsync` | rsync over ssh |
+| Run WP-CLI on the server | `bash wp-staging.sh <wp args>` (or `bun run wp <wp args>`) | ssh exec |
+| One-off file operations | `bun run tools/<script>.ts` | SFTP (ssh2) |
+
+## Quick start in a new project
+
+```bash
+# 1. Add the tool to the theme (it is gitignored by the theme, it's its own repo)
+cd wp-content/themes/<your-theme>
+git clone https://github.com/CTOHacon/wordpress-theme-deployment-tool .deployment
+echo ".deployment" >> .gitignore
+
+# 2. Install and configure
+cd .deployment
+bun install
+cp config-template.json config.json      # fill in ssh + remote_theme_path
+
+# 3. Check the connection, then deploy
+bash wp-staging.sh option get home       # WP-CLI answers → ssh + paths are right
+bun run deploy:rsync:dry                 # see what would be transferred
+bun run deploy:rsync                     # or: bun run deploy (sftp)
+```
+
+Which transport to pick:
+
+- **SFTP (`bun run deploy`)** — works with password auth and on Windows (no rsync needed); has `sync` watch mode and `pull`.
+- **rsync (`bun run deploy:rsync`)** — needs key auth and a local `rsync`; required when the host disables the sftp subsystem (**Flywheel** does — the SFTP tool can't connect there at all). Faster deltas.
+
+Both read the same `ssh` block and `exclude` list, so you can switch freely.
 
 ## Installation
 
@@ -33,6 +68,7 @@ Configure your SSH connection with one of the authentication methods below.
 - **`remote_theme_path`**: The absolute path to your theme directory on the remote server
   - Example: `/var/www/html/wp-content/themes/my-theme`
 - **`local_theme_path`**: The relative path to your local theme (default: `../`)
+- **`remote_wp_root`** *(optional)*: WordPress root on the server, where `wp-staging.sh` runs WP-CLI and `tools/upload-media.ts` finds `wp-content/uploads`. Leave empty to derive it from `remote_theme_path` (everything before `/wp-content/`).
 
 #### Exclusions (`exclude`)
 
@@ -42,9 +78,11 @@ An array of glob patterns for files/folders to exclude from deployment:
 
 #### Deployment Steps (`deployment.steps`)
 
-Optional commands to run on the remote server after deployment:
+Optional commands to run on the remote server after deployment (both the SFTP deploy and `deploy.sh --apply` run them; `{remote_theme_path}` is substituted):
 - **`composerInstall`**: Command to install/update Composer dependencies
   - Default: `cd {remote_theme_path}/ThemeCore && composer install`
+
+**Hosts without Composer (e.g. Flywheel):** remove `**/vendor` and `vendor` from `exclude` so the locally installed `vendor/` ships with the theme, and set `"steps": {}`. Keep `vendor/php-stubs` excluded (dev-only, large).
 
 ---
 
@@ -184,7 +222,55 @@ Here's a full example with all options configured:
 
 ## Usage
 
-### One-Time Deployment
+### rsync Deploy (`deploy.sh`)
+
+```bash
+bun run deploy:rsync:dry        # ./deploy.sh            — dry run, prints what would change
+bun run deploy:rsync            # ./deploy.sh --apply    — transfer
+./deploy.sh --apply --delete    # also remove remote files that no longer exist locally
+```
+
+Reads `ssh.host/port/username/privateKey`, `remote_theme_path`, `local_theme_path` and `exclude` from `config.json` (needs `python3` for JSON parsing; macOS ships it). Key auth only — `BatchMode=yes`, a password prompt would just fail.
+
+On `--apply` it additionally:
+
+1. **Mirrors `source/build/`** with `--delete` (if that directory exists). Vite emits content-hashed filenames and a plain rsync only adds, so old builds pile up on the server. A theme that resolves assets by glob (`source/build/asset.app-*.css`, first match) can then keep serving a superseded build whose hash sorts first — it looks exactly like "the deploy didn't work". Only that directory is mirrored; everything in it is a regenerated artifact.
+2. **Deletes `theme-require-mapping.json`** on the server — the HACON path cache stores absolute paths, and a copy from another machine fatals the site. The server regenerates its own.
+3. **Runs `deployment.steps`** over ssh.
+
+> `deploy.sh` ships **source only**. Seeders, options and media are data: run them on the server yourself (see below).
+
+### WP-CLI Gateway (`wp-staging.sh`)
+
+Runs `wp` in `remote_wp_root` on the deploy target — same ssh credentials as the deploy:
+
+```bash
+bash .deployment/wp-staging.sh option get home
+bash .deployment/wp-staging.sh cache flush
+bash .deployment/wp-staging.sh eval-file - < seeders/my-seeder.php   # run a local PHP file on the server
+```
+
+Arguments are shell-quoted before being sent, so values with spaces are safe. This is the one door for every read/write against the remote database — use it to run seeders there after deploying them.
+
+### One-off Tools (`tools/`)
+
+Small SFTP scripts sharing `tools/config.ts` (reads `config.json`, loads the private key file, resolves `remote_wp_root`):
+
+| Script | Usage |
+|---|---|
+| `tools/probe.ts` | `bun run tools/probe.ts` — print the SFTP home dir and `wp-content/themes` listing (finds `remote_theme_path` on an unknown host) |
+| `tools/put-one.ts` | `bun run tools/put-one.ts <local> <remote>` — upload one file, list same-stem siblings first |
+| `tools/rm-one.ts` | `bun run tools/rm-one.ts <remote>` — delete one remote file and confirm it's gone |
+| `tools/upload-dir.ts` | `bun run tools/upload-dir.ts <localDir> <remoteDir>` — upload a directory tree |
+| `tools/upload-media.ts` | `bun run tools/upload-media.ts` — push local `wp-content/uploads` to the server, skipping same-size files |
+
+These need a host with sftp enabled (not Flywheel).
+
+### Pull (`bun run pull`)
+
+Downloads the server's theme into `.backsync/` (gitignored) for diffing against local source — useful when someone edited files directly on the server. Ignores `exclude` (so `.scss`/`.ts` come down too); skips `.git`, `node_modules`, `vendor`, `.deployment`.
+
+### SFTP Deploy
 
 Deploy your theme once with:
 
@@ -301,6 +387,20 @@ bun run sync
 - Check that your public key is in the server's `~/.ssh/authorized_keys`
 - Verify you're using the correct username
 
+### SFTP: "subsystem request failed" / connection closes right after auth
+
+**Problem:** The host disables the sftp subsystem (Flywheel's SSH gateway does). `bun run deploy`, `sync`, `pull` and `tools/` cannot work there.
+
+**Solution:** Use `bun run deploy:rsync` and `wp-staging.sh` — both run over a plain ssh exec channel.
+
+### Deploy "did nothing" — page still shows old CSS/JS
+
+**Problem:** New files arrived, but the page still loads a previous build.
+
+**Solutions:**
+- Check `ls source/build/asset.app-*.css` on the server: more than one file means superseded hashed builds are shadowing the current one. `deploy.sh --apply` mirrors that directory — redeploy with it
+- Host page cache (Flywheel, WP Engine, …): purge it, or add a purge command to `deployment.steps`
+
 ### Connection Timeout
 
 **Problem:** Cannot connect to server
@@ -368,7 +468,7 @@ bun run sync
 
 ## Security Best Practices
 
-1. **Never commit `config.json`** - It's gitignored by default, keep it that way
+1. **Never commit `config.json` or keys** - `config.json`, `id_rsa*`, `id_ed25519*`, `ssh_key*` are gitignored; keep a project key next to `config.json` under one of those names
 2. **Use SSH keys over passwords** - More secure and convenient
 3. **Protect your private keys** - Set proper permissions (`chmod 600`)
 4. **Use passphrase-protected keys** - Extra layer of security
@@ -404,7 +504,7 @@ Create multiple config files for different environments:
 - `config.staging.json`
 - `config.production.json`
 
-Then modify `package.json` scripts:
+Then add `package.json` scripts (`wp-staging.sh` and `deploy.sh` always read `config.json`, so copy first for them too):
 
 ```json
 {

@@ -1,7 +1,6 @@
 config.json
 .output
 bun.lockb
-id_rsa
 
 node_modules
 
@@ -197,3 +196,8 @@ ssh_passphrase
 .mtime-snapshot.json
 config.plugins.json
 config.theme.json
+
+# SSH keys kept next to config.json
+id_rsa*
+id_ed25519*
+ssh_key*

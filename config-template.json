@@ -8,6 +8,7 @@
         "passphrase": "passphrase_to_id_rsa"
     },
     "remote_theme_path": "",
+    "remote_wp_root": "",
     "local_theme_path": "../",
     "exclude": [
         ".git",
@@ -37,7 +38,16 @@
         "gutenberg/node_modules",
         "**/*.jsx",
         "**/*.md",
-        "theme-require-mapping.json"
+        "theme-require-mapping.json",
+        ".claude-memory",
+        ".claude-wp-developer",
+        ".superpowers",
+        ".output",
+        "bun.lock",
+        "vendor/php-stubs",
+        "**/*.csv",
+        "**/__pycache__",
+        "**/*.pyc"
     ],
     "deployment": {
         "steps": {

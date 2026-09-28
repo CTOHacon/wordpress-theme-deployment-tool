@@ -1,5 +1,5 @@
 import { Client } from "ssh2";
-import config from "./config.json";
+import { connectOptions } from "./config";
 
 const c = new Client();
 c.on("ready", () => {
@@ -19,9 +19,4 @@ c.on("ready", () => {
         });
     });
 }).on("error", e => { console.error("Connection error:", e.message); process.exit(1); })
-.connect({
-    host: config.ssh.host,
-    port: config.ssh.port,
-    username: config.ssh.username,
-    password: config.ssh.password
-});
+.connect(connectOptions());

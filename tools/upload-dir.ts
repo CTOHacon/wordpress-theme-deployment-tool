@@ -1,11 +1,11 @@
 import { Client } from 'ssh2';
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { join, posix } from 'path';
 
-const cfg = JSON.parse(readFileSync(new URL('./config.json', import.meta.url), 'utf8'));
+import { connectOptions } from './config';
 const [localRoot, remoteRoot] = process.argv.slice(2);
 if (!localRoot || !remoteRoot) {
-	console.error('usage: bun run upload-dir.ts <localDir> <remoteDir>');
+	console.error('usage: bun run tools/upload-dir.ts <localDir> <remoteDir>');
 	process.exit(1);
 }
 
@@ -63,4 +63,4 @@ conn.on('error', e => {
 	console.error('ssh error:', e.message);
 	process.exit(1);
 });
-conn.connect(cfg.ssh);
+conn.connect(connectOptions());

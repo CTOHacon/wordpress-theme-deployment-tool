@@ -20,7 +20,10 @@
   },
   "scripts": {
     "deploy": "bun run src/index.ts",
+    "deploy:rsync": "./deploy.sh --apply",
+    "deploy:rsync:dry": "./deploy.sh",
     "sync": "bun run src/index.ts --sync",
-    "pull": "bun run src/index.ts --pull"
+    "pull": "bun run src/index.ts --pull",
+    "wp": "bash ./wp-staging.sh"
   }
 }

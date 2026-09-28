@@ -1,10 +1,9 @@
 import { Client } from 'ssh2';
-import { readFileSync } from 'fs';
 
-const cfg = JSON.parse(readFileSync(new URL('./config.json', import.meta.url), 'utf8'));
+import { connectOptions } from './config';
 const remotePath = process.argv[2];
 if (!remotePath) {
-	console.error('usage: bun run rm-one.ts <remotePath>');
+	console.error('usage: bun run tools/rm-one.ts <remotePath>');
 	process.exit(1);
 }
 
@@ -32,4 +31,4 @@ conn.on('error', e => {
 	process.exit(1);
 });
 
-conn.connect(cfg.ssh);
+conn.connect(connectOptions());
